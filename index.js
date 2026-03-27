@@ -41,6 +41,9 @@ const POLL_INTERVAL_MS = 2000;
 const TOP_REFRESH_MS = 4000;
 const NETWORK_CACHE_MS = 10000;
 const BRIGHTNESS_REFRESH_MS = 15000;
+
+const NETWORK_EXCLUDED_PREFIXES = ['lo', 'docker', 'br-', 'veth', 'virbr', 'vmnet', 'vboxnet', 'tailscale', 'zt', 'tun', 'tap', 'wg'];
+const NETWORK_PREFERRED_PREFIXES = ['en', 'eth', 'wl', 'wlan', 'ww', 'usb'];
 const TRANSIENT_IMAGE_MS = 1250;
 
 const ws = new WebSocket(`ws://127.0.0.1:${port}`);
@@ -198,6 +201,97 @@ function getShortProcName(name) {
   if (lower.includes('kwin')) return 'KWin';
 
   return cleaned.length > 9 ? `${cleaned.slice(0, 8)}…` : cleaned;
+}
+
+function hasAnyPrefix(value, prefixes) {
+  const lower = String(value || '').toLowerCase();
+  return prefixes.some((prefix) => lower.startsWith(prefix));
+}
+
+function scoreNetworkInterface(iface) {
+  const name = String(iface.iface || '');
+  if (!name) return -10000;
+
+  let score = 0;
+
+  if (iface.operstate === 'up') score += 200;
+  if (iface.default) score += 500;
+  if (iface.ip4) score += 120;
+  if (iface.ip6) score += 40;
+  if (typeof iface.speed === 'number' && iface.speed > 0) score += Math.min(iface.speed, 1000) / 10;
+  if (iface.type === 'wired') score += 80;
+  if (iface.type === 'wireless') score += 60;
+  if (hasAnyPrefix(name, NETWORK_PREFERRED_PREFIXES)) score += 180;
+  if (hasAnyPrefix(name, NETWORK_EXCLUDED_PREFIXES)) score -= 1000;
+
+  return score;
+}
+
+function isExcludedTopProcess(name) {
+  const lower = String(name || '').toLowerCase();
+
+  const blocked = [
+    'node',
+    'opendeck',
+    'systemd',
+    'kworker',
+    'ananicy',
+    'rtkit',
+    'bash',
+    'sh',
+    'grep',
+    'cat',
+    'top',
+    'pipewire',
+    'wireplumber',
+    'dbus-daemon',
+    'xdg-desktop-portal',
+    'xdg-document-portal',
+  ];
+
+  return blocked.some((entry) => lower === entry || lower.includes(entry));
+}
+
+function getTopProcessSummary(procData) {
+  const list = Array.isArray(procData?.list) ? procData.list : [];
+  const grouped = new Map();
+
+  for (const process of list) {
+    const rawName = String(process.name || '').trim();
+    const cpu = Number(process.cpu || 0);
+
+    if (!rawName) continue;
+    if (!Number.isFinite(cpu) || cpu <= 0.2) continue;
+    if (isExcludedTopProcess(rawName)) continue;
+
+    const label = getShortProcName(rawName);
+    grouped.set(label, (grouped.get(label) || 0) + cpu);
+  }
+
+  if (grouped.size === 0) return null;
+
+  let bestName = '';
+  let bestCpu = 0;
+
+  for (const [name, cpu] of grouped.entries()) {
+    if (cpu > bestCpu) {
+      bestName = name;
+      bestCpu = cpu;
+    }
+  }
+
+  if (bestCpu < 1) return null;
+
+  const normalizedCpu = clamp(
+    Math.round(bestCpu > 100 ? bestCpu / coreCount : bestCpu),
+    0,
+    100
+  );
+
+  return {
+    name: bestName,
+    cpu: normalizedCpu,
+  };
 }
 
 function generateButtonImage(icon, title, line1, line2, percent = -1) {
@@ -422,11 +516,11 @@ async function detectActiveInterface(force = false) {
       return !iface.internal && !iface.virtual && name && iface.operstate === 'up';
     });
 
-    const preferred =
-      candidates.find((iface) => iface.default) ||
-      candidates.find((iface) => iface.ip4) ||
-      candidates[0] ||
-      null;
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    const preferred = [...candidates].sort((a, b) => scoreNetworkInterface(b) - scoreNetworkInterface(a))[0] || null;
 
     networkCache.iface = preferred ? preferred.iface : null;
     return networkCache.iface;
@@ -437,12 +531,24 @@ async function detectActiveInterface(force = false) {
 }
 
 async function getNetworkStats() {
-  const iface = await detectActiveInterface();
+  let iface = await detectActiveInterface();
 
   try {
     if (iface) {
-      const data = await si.networkStats(iface);
-      return { available: Array.isArray(data) && data.length > 0, iface, data };
+      let data = await si.networkStats(iface);
+
+      if (Array.isArray(data) && data.length > 0) {
+        return { available: true, iface, data };
+      }
+
+      iface = await detectActiveInterface(true);
+
+      if (iface) {
+        data = await si.networkStats(iface);
+        if (Array.isArray(data) && data.length > 0) {
+          return { available: true, iface, data };
+        }
+      }
     }
 
     const data = await si.networkStats();
@@ -1028,28 +1134,10 @@ function startPolling() {
         } else if (action === ACTIONS.ping) {
           image = generateButtonImage('⚡', 'PING', `${lastPing} ms`, '1.1.1.1', Math.min(100, lastPing));
         } else if (action === ACTIONS.top) {
-          const topProcess = procData.list
-            ?.filter((process) => {
-              const name = String(process.name || '').toLowerCase();
-              return !name.includes('node')
-                && !name.includes('opendeck')
-                && !name.includes('systemd')
-                && !name.includes('kworker')
-                && !name.includes('ananicy')
-                && !name.includes('rtkit')
-                && name !== 'top'
-                && name !== 'sh'
-                && name !== 'cat'
-                && name !== 'grep'
-                && !name.includes('bash');
-            })
-            .sort((a, b) => b.cpu - a.cpu)[0];
+          const topProcess = getTopProcessSummary(procData);
 
           if (topProcess) {
-            const cleanName = getShortProcName(topProcess.name);
-            const load = topProcess.cpu > 100 ? (topProcess.cpu / coreCount) : topProcess.cpu;
-            const loadPercent = Math.min(100, Math.round(load));
-            image = generateButtonImage('🔥', 'TOP', cleanName, `${loadPercent}% CPU`, loadPercent);
+            image = generateButtonImage('🔥', 'TOP', topProcess.name, `${topProcess.cpu}% CPU`, topProcess.cpu);
           } else {
             image = unavailableButton('🔥', 'TOP', 'IDLE');
           }
