@@ -8,7 +8,8 @@
         {
           "Image": "icons/actionDefaultImage.png"
         }
-      ]
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     },
     {
       "Icon": "icons/icon_gpu.svg",
@@ -18,7 +19,8 @@
         {
           "Image": "icons/actionDefaultImage.png"
         }
-      ]
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     },
     {
       "Icon": "icons/icon_ram.svg",
@@ -28,7 +30,8 @@
         {
           "Image": "icons/actionDefaultImage.png"
         }
-      ]
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     },
     {
       "Icon": "icons/icon_vram.svg",
@@ -38,7 +41,8 @@
         {
           "Image": "icons/actionDefaultImage.png"
         }
-      ]
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     },
     {
       "Icon": "icons/icon_net.svg",
@@ -48,7 +52,8 @@
         {
           "Image": "icons/actionDefaultImage.png"
         }
-      ]
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     },
     {
       "Icon": "icons/icon_disk.svg",
@@ -58,7 +63,8 @@
         {
           "Image": "icons/actionDefaultImage.png"
         }
-      ]
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     },
     {
       "Icon": "icons/icon_ping.svg",
@@ -68,7 +74,8 @@
         {
           "Image": "icons/actionDefaultImage.png"
         }
-      ]
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     },
     {
       "Icon": "icons/icon_top.svg",
@@ -78,7 +85,8 @@
         {
           "Image": "icons/actionDefaultImage.png"
         }
-      ]
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     },
     {
       "Icon": "icons/icon_time.svg",
@@ -88,7 +96,8 @@
         {
           "Image": "icons/actionDefaultImage.png"
         }
-      ]
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     },
     {
       "Icon": "icons/icon_audio.svg",
@@ -102,7 +111,8 @@
         {
           "Image": "icons/actionDefaultImage.png"
         }
-      ]
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     },
     {
       "Icon": "icons/icon_timer.svg",
@@ -115,7 +125,8 @@
         {
           "Image": "icons/actionDefaultImage.png"
         }
-      ]
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     },
     {
       "Icon": "icons/icon_bright.svg",
@@ -128,7 +139,8 @@
         {
           "Image": "icons/actionDefaultImage.png"
         }
-      ]
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     }
   ],
   "Author": "Ming",

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Redline Monitor Settings</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="wrap">
+    <h1>Redline Monitor</h1>
+
+    <section class="card">
+      <label for="pingHost">Ping host</label>
+      <input id="pingHost" type="text" placeholder="1.1.1.1">
+      <p class="hint">Used by the Ping action.</p>
+    </section>
+
+    <section class="card">
+      <label for="networkInterface">Network interface override</label>
+      <input id="networkInterface" type="text" placeholder="auto">
+      <p class="hint">Leave empty for automatic detection.</p>
+    </section>
+
+    <section class="card">
+      <label for="volumeStep">Volume step</label>
+      <input id="volumeStep" type="number" min="1" max="20" step="1" value="2">
+      <p class="hint">Used by the Audio action.</p>
+    </section>
+
+    <section class="card">
+      <label for="brightnessStep">Brightness step</label>
+      <input id="brightnessStep" type="number" min="1" max="25" step="1" value="5">
+      <p class="hint">Used by the Monitor Brightness action.</p>
+    </section>
+
+    <section class="card">
+      <label for="timerStep">Timer step in minutes</label>
+      <input id="timerStep" type="number" min="1" max="60" step="1" value="1">
+      <p class="hint">Used by the Timer action.</p>
+    </section>
+
+    <section class="card">
+      <label for="topMode">Top process mode</label>
+      <select id="topMode">
+        <option value="grouped">Grouped app view</option>
+        <option value="raw">Raw process view</option>
+      </select>
+      <p class="hint">Used by the Top action.</p>
+    </section>
+
+    <section class="card">
+      <button id="saveButton" type="button">Save</button>
+      <p id="statusText" class="status">Inspector loaded</p>
+    </section>
+  </main>
+
+  <script src="main.js"></script>
+</body>
+</html>
