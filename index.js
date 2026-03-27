@@ -41,17 +41,20 @@ const POLL_INTERVAL_MS = 2000;
 const TOP_REFRESH_MS = 4000;
 const NETWORK_CACHE_MS = 10000;
 const BRIGHTNESS_REFRESH_MS = 15000;
+const TRANSIENT_IMAGE_MS = 1250;
 
 const ws = new WebSocket(`ws://127.0.0.1:${port}`);
 
 const activeContexts = Object.create(null);
 const activeTimers = Object.create(null);
 const lastSentImages = Object.create(null);
+const transientImageTimers = Object.create(null);
 
 let pollingInterval = null;
 let timerInterval = null;
 let pollingInProgress = false;
 let ddcutilTimeout = null;
+let shuttingDown = false;
 
 let monitorBrightness = 50;
 let monitorBrightnessAvailable = false;
@@ -69,6 +72,25 @@ let networkCache = { timestamp: 0, iface: null };
 const toolCache = new Map();
 const warnedKeys = new Set();
 const coreCount = Math.max(1, os.cpus().length);
+
+const ACTION_LAUNCHERS = Object.freeze({
+  [ACTIONS.cpu]: {
+    command: 'plasma-systemmonitor > /dev/null 2>&1 &',
+    check: 'plasma-systemmonitor',
+    success: { icon: '💻', title: 'CPU', line1: 'OPEN', line2: 'Monitor' },
+    failure: { icon: '💻', title: 'CPU', line1: 'NO APP', line2: 'Install it' },
+  },
+  [ACTIONS.gpu]: {
+    command: 'lact gui > /dev/null 2>&1 &',
+    check: 'lact',
+    success: { icon: '🎮', title: 'GPU', line1: 'OPEN', line2: 'LACT' },
+    failure: { icon: '🎮', title: 'GPU', line1: 'NO LACT', line2: 'Install it' },
+  },
+});
+
+function log(...parts) {
+  console.log('[Redline]', ...parts);
+}
 
 function warn(...parts) {
   console.warn('[Redline]', ...parts);
@@ -140,6 +162,23 @@ function sendUpdateIfChanged(context, image) {
   });
 
   lastSentImages[context] = image;
+}
+
+function clearTransientTimer(context) {
+  if (transientImageTimers[context]) {
+    clearTimeout(transientImageTimers[context]);
+    delete transientImageTimers[context];
+  }
+}
+
+function showTransientImage(context, image, duration = TRANSIENT_IMAGE_MS) {
+  clearTransientTimer(context);
+  sendUpdateIfChanged(context, image);
+
+  transientImageTimers[context] = setTimeout(() => {
+    delete lastSentImages[context];
+    delete transientImageTimers[context];
+  }, duration);
 }
 
 function getShortProcName(name) {
@@ -573,14 +612,69 @@ async function updatePingImmediately(context) {
   sendUpdateIfChanged(context, generateButtonImage('⚡', 'PING', `${lastPing} ms`, '1.1.1.1', Math.min(100, lastPing)));
 }
 
-async function openActionTool(action) {
-  if (action === ACTIONS.cpu && (await commandExists('plasma-systemmonitor'))) {
-    await runCommand('plasma-systemmonitor > /dev/null 2>&1 &', 1500);
-    return;
+async function openActionTool(action, context) {
+  const launcher = ACTION_LAUNCHERS[action];
+  if (!launcher) return false;
+
+  const available = await commandExists(launcher.check);
+
+  if (!available) {
+    showTransientImage(
+      context,
+      generateButtonImage(
+        launcher.failure.icon,
+        launcher.failure.title,
+        launcher.failure.line1,
+        launcher.failure.line2,
+        -1
+      )
+    );
+    return false;
   }
 
-  if (action === ACTIONS.gpu && (await commandExists('lact'))) {
-    await runCommand('lact gui > /dev/null 2>&1 &', 1500);
+  await runCommand(launcher.command, 1500);
+
+  showTransientImage(
+    context,
+    generateButtonImage(
+      launcher.success.icon,
+      launcher.success.title,
+      launcher.success.line1,
+      launcher.success.line2,
+      -1
+    )
+  );
+
+  return true;
+}
+
+function cleanupRuntime() {
+  clearInterval(pollingInterval);
+  clearInterval(timerInterval);
+  clearTimeout(ddcutilTimeout);
+
+  pollingInterval = null;
+  timerInterval = null;
+  ddcutilTimeout = null;
+  pollingInProgress = false;
+
+  for (const context of Object.keys(transientImageTimers)) {
+    clearTransientTimer(context);
+  }
+}
+
+function shutdown(reason) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  log(`Shutting down (${reason})`);
+  cleanupRuntime();
+
+  try {
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      ws.close();
+    }
+  } catch {
   }
 }
 
@@ -596,7 +690,8 @@ ws.on('error', (error) => {
 });
 
 ws.on('close', () => {
-  console.log('[Redline] WebSocket closed');
+  log('WebSocket closed');
+  cleanupRuntime();
 });
 
 ws.on('message', async (data) => {
@@ -640,12 +735,10 @@ ws.on('message', async (data) => {
       delete activeContexts[context];
       delete activeTimers[context];
       delete lastSentImages[context];
+      clearTransientTimer(context);
 
       if (Object.keys(activeContexts).length === 0) {
-        clearInterval(pollingInterval);
-        clearInterval(timerInterval);
-        pollingInterval = null;
-        timerInterval = null;
+        cleanupRuntime();
         procCache = { timestamp: 0, data: { list: [] } };
       }
       return;
@@ -679,7 +772,7 @@ ws.on('message', async (data) => {
     if (event === 'dialDown' || event === 'keyDown') {
       if (!activeContexts[context]?.isEncoder) {
         if (action === ACTIONS.cpu || action === ACTIONS.gpu) {
-          await openActionTool(action);
+          await openActionTool(action, context);
         }
 
         if (action === ACTIONS.ping) {
@@ -756,7 +849,7 @@ function startTimerLoop() {
 
 function startPolling() {
   pollingInterval = setInterval(async () => {
-    if (pollingInProgress) return;
+    if (pollingInProgress || shuttingDown) return;
     pollingInProgress = true;
 
     try {
@@ -836,6 +929,10 @@ function startPolling() {
 
       for (const context of Object.keys(activeContexts)) {
         const { action } = activeContexts[context];
+
+        if (transientImageTimers[context]) {
+          continue;
+        }
 
         if (action === ACTIONS.audio) {
           if (!audioData.available) {
@@ -978,3 +1075,7 @@ function startPolling() {
     }
   }, POLL_INTERVAL_MS);
 }
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('exit', () => cleanupRuntime());
