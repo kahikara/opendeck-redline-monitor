@@ -199,8 +199,9 @@ copy_optional() {
 
 validate_zip() {
   local zip_path="$1"
+  local package_name="$2"
 
-python3 - "$zip_path" <<'PY'
+python3 - "$zip_path" "$package_name" <<'PY'
 import json
 import re
 import sys
@@ -208,19 +209,20 @@ import zipfile
 from pathlib import PurePosixPath
 
 zip_path = sys.argv[1]
+package_name = sys.argv[2]
 
 with zipfile.ZipFile(zip_path, "r") as zf:
     names = set(zf.namelist())
 
     def zip_exists(rel_path: str) -> bool:
-        return rel_path in names
+        return f"{package_name}/{rel_path}" in names
 
     def read_json(rel_path: str):
-        with zf.open(rel_path) as fh:
+        with zf.open(f"{package_name}/{rel_path}") as fh:
             return json.load(fh)
 
     def read_text(rel_path: str) -> str:
-        with zf.open(rel_path) as fh:
+        with zf.open(f"{package_name}/{rel_path}") as fh:
             return fh.read().decode("utf-8", errors="ignore")
 
     required_paths = {
@@ -270,7 +272,7 @@ with zipfile.ZipFile(zip_path, "r") as zf:
     missing = [path for path in sorted(required_paths) if not zip_exists(path)]
     if missing:
         for path in missing:
-            print(f"ERROR: ZIP Inhalt fehlt: {path}", file=sys.stderr)
+            print(f"ERROR: ZIP Inhalt fehlt: {package_name}/{path}", file=sys.stderr)
         sys.exit(1)
 
 print("ZIP validation OK")
@@ -287,7 +289,7 @@ if [[ "$MODE" == "validate" || "$MODE" == "--validate" ]]; then
 fi
 
 OUT_DIR="$SCRIPT_DIR/dist"
-STAGE_DIR="$OUT_DIR/$PLUGIN_SLUG"
+STAGE_DIR="$OUT_DIR/$PACKAGE_NAME"
 ZIP_NAME="$PLUGIN_SLUG-v$VERSION.zip"
 ZIP_PATH="$OUT_DIR/$ZIP_NAME"
 
@@ -314,10 +316,10 @@ chmod +x "$STAGE_DIR/start.sh"
 
 rm -f "$ZIP_PATH"
 (
-  cd "$STAGE_DIR"
-  zip -qr "$ZIP_PATH" .
+  cd "$OUT_DIR"
+  zip -qr "$ZIP_NAME" "$PACKAGE_NAME"
 )
 
-validate_zip "$ZIP_PATH"
+validate_zip "$ZIP_PATH" "$PACKAGE_NAME"
 
 echo "Built: $ZIP_PATH"
