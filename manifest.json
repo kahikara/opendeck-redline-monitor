@@ -1,106 +1,106 @@
 {
   "Actions": [
     {
-      "Icon": "icons/icon_cpu.png",
+      "Icon": "icons/icon_cpu",
       "Name": "CPU",
       "UUID": "com.kahikara.opendeck-redline.cpu",
       "States": [
         {
-          "Image": "icons/actionDefaultImage.png"
+          "Image": "icons/actionDefaultImage"
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
     },
     {
-      "Icon": "icons/icon_gpu.png",
+      "Icon": "icons/icon_gpu",
       "Name": "GPU",
       "UUID": "com.kahikara.opendeck-redline.gpu",
       "States": [
         {
-          "Image": "icons/actionDefaultImage.png"
+          "Image": "icons/actionDefaultImage"
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
     },
     {
-      "Icon": "icons/icon_ram.png",
+      "Icon": "icons/icon_ram",
       "Name": "RAM",
       "UUID": "com.kahikara.opendeck-redline.ram",
       "States": [
         {
-          "Image": "icons/actionDefaultImage.png"
+          "Image": "icons/actionDefaultImage"
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
     },
     {
-      "Icon": "icons/icon_vram.png",
+      "Icon": "icons/icon_vram",
       "Name": "VRAM",
       "UUID": "com.kahikara.opendeck-redline.vram",
       "States": [
         {
-          "Image": "icons/actionDefaultImage.png"
+          "Image": "icons/actionDefaultImage"
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
     },
     {
-      "Icon": "icons/icon_net.png",
+      "Icon": "icons/icon_net",
       "Name": "Network",
       "UUID": "com.kahikara.opendeck-redline.net",
       "States": [
         {
-          "Image": "icons/actionDefaultImage.png"
+          "Image": "icons/actionDefaultImage"
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
     },
     {
-      "Icon": "icons/icon_disk.png",
+      "Icon": "icons/icon_disk",
       "Name": "Disk",
       "UUID": "com.kahikara.opendeck-redline.disk",
       "States": [
         {
-          "Image": "icons/actionDefaultImage.png"
+          "Image": "icons/actionDefaultImage"
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
     },
     {
-      "Icon": "icons/icon_ping.png",
+      "Icon": "icons/icon_ping",
       "Name": "Ping",
       "UUID": "com.kahikara.opendeck-redline.ping",
       "States": [
         {
-          "Image": "icons/actionDefaultImage.png"
+          "Image": "icons/actionDefaultImage"
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
     },
     {
-      "Icon": "icons/icon_top.png",
+      "Icon": "icons/icon_top",
       "Name": "Top Proc",
       "UUID": "com.kahikara.opendeck-redline.top",
       "States": [
         {
-          "Image": "icons/actionDefaultImage.png"
+          "Image": "icons/actionDefaultImage"
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
     },
     {
-      "Icon": "icons/icon_time.png",
+      "Icon": "icons/icon_time",
       "Name": "Time/Date",
       "UUID": "com.kahikara.opendeck-redline.time",
       "States": [
         {
-          "Image": "icons/actionDefaultImage.png"
+          "Image": "icons/actionDefaultImage"
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
     },
     {
-      "Icon": "icons/icon_audio.png",
+      "Icon": "icons/icon_audio",
       "Name": "Audio Volume",
       "UUID": "com.kahikara.opendeck-redline.audio",
       "Controllers": [
@@ -109,13 +109,13 @@
       ],
       "States": [
         {
-          "Image": "icons/actionDefaultImage.png"
+          "Image": "icons/actionDefaultImage"
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
     },
     {
-      "Icon": "icons/icon_timer.png",
+      "Icon": "icons/icon_timer",
       "Name": "Alarm Timer",
       "UUID": "com.kahikara.opendeck-redline.timer",
       "Controllers": [
@@ -123,13 +123,13 @@
       ],
       "States": [
         {
-          "Image": "icons/actionDefaultImage.png"
+          "Image": "icons/actionDefaultImage"
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
     },
     {
-      "Icon": "icons/icon_bright.png",
+      "Icon": "icons/icon_bright",
       "Name": "Monitor Brightness",
       "UUID": "com.kahikara.opendeck-redline.monbright",
       "Controllers": [
@@ -137,7 +137,7 @@
       ],
       "States": [
         {
-          "Image": "icons/actionDefaultImage.png"
+          "Image": "icons/actionDefaultImage"
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
@@ -145,11 +145,11 @@
   ],
   "Author": "Ming",
   "Category": "Redline",
-  "CategoryIcon": "icons/categoryIcon.png",
+  "CategoryIcon": "icons/categoryIcon",
   "CodePath": "start.sh",
   "Description": "An OpenDeck plugin for AMD focused Linux monitoring",
   "Name": "Redline Monitor",
-  "Icon": "icons/pluginIcon.png",
+  "Icon": "icons/pluginIcon",
   "OS": [
     {
       "Platform": "linux",
