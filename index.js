@@ -392,9 +392,9 @@ function generateButtonImage(icon, title, line1, line2, percent = -1) {
   const safeLine1 = String(line1 || '');
   const safeLine2 = String(line2 || '');
 
-  const titleSize = getAdaptiveFontSize(safeTitle, 20, 16, 8, 1);
-  const line1Size = getAdaptiveFontSize(safeLine1, 38, 22, 5, 2);
-  const line2Size = getAdaptiveFontSize(safeLine2, 18, 12, 16, 1);
+  const titleSize = getAdaptiveFontSize(safeTitle, 19, 15, 8, 1);
+  const line1Size = getAdaptiveFontSize(safeLine1, 35, 21, 5, 2);
+  const line2Size = getAdaptiveFontSize(safeLine2, 20, 13, 16, 1);
 
   let barHtml = '';
 
@@ -409,10 +409,10 @@ function generateButtonImage(icon, title, line1, line2, percent = -1) {
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
     <rect width="144" height="144" fill="#18181b"/>
-    <text x="28" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="22" text-anchor="middle">${escapeXml(icon)}</text>
-    <text x="44" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
-    <text x="72" y="78" fill="#ffffff" font-family="sans-serif" font-size="${line1Size}" font-weight="bold" text-anchor="middle">${escapeXml(safeLine1)}</text>
-    <text x="72" y="102" fill="#a1a1aa" font-family="sans-serif" font-size="${line2Size}" text-anchor="middle">${escapeXml(safeLine2)}</text>
+    <text x="60" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="21" text-anchor="end">${escapeXml(icon)}</text>
+    <text x="64" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
+    <text x="72" y="76" fill="#ffffff" font-family="sans-serif" font-size="${line1Size}" font-weight="bold" text-anchor="middle">${escapeXml(safeLine1)}</text>
+    <text x="72" y="104" fill="#a1a1aa" font-family="sans-serif" font-size="${line2Size}" text-anchor="middle">${escapeXml(safeLine2)}</text>
     ${barHtml}
   </svg>`;
 
@@ -424,7 +424,7 @@ function generateDialImage(icon, title, valueText, percent = -1, barColor = 'rgb
   const safeValue = String(valueText || '');
 
   const titleSize = getAdaptiveFontSize(safeTitle, 18, 14, 10, 1);
-  const valueSize = getAdaptiveFontSize(safeValue, 42, 24, 4, 2);
+  const valueSize = getAdaptiveFontSize(safeValue, 40, 24, 4, 2);
 
   let barHtml = '';
 
@@ -436,9 +436,9 @@ function generateDialImage(icon, title, valueText, percent = -1, barColor = 'rgb
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
     <rect width="144" height="144" fill="#18181b"/>
-    <text x="28" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="22" text-anchor="middle">${escapeXml(icon)}</text>
-    <text x="44" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
-    <text x="72" y="88" fill="#ffffff" font-family="sans-serif" font-size="${valueSize}" font-weight="bold" text-anchor="middle">${escapeXml(safeValue)}</text>
+    <text x="60" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="21" text-anchor="end">${escapeXml(icon)}</text>
+    <text x="64" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
+    <text x="72" y="86" fill="#ffffff" font-family="sans-serif" font-size="${valueSize}" font-weight="bold" text-anchor="middle">${escapeXml(safeValue)}</text>
     ${barHtml}
   </svg>`;
 
