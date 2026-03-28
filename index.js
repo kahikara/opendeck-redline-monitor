@@ -50,6 +50,7 @@ const POLL_INTERVAL_MS = 2000;
 const TOP_REFRESH_MS = 4000;
 const NETWORK_CACHE_MS = 10000;
 const BRIGHTNESS_REFRESH_MS = 15000;
+const CPU_POWER_SOURCE_CACHE_MS = 10000;
 const DISK_CACHE_MS = 30000;
 
 const NETWORK_EXCLUDED_PREFIXES = ['lo', 'docker', 'br-', 'veth', 'virbr', 'vmnet', 'vboxnet', 'tailscale', 'zt', 'tun', 'tap', 'wg'];
@@ -76,18 +77,17 @@ let monitorBrightnessAvailable = false;
 let lastBrightnessSync = 0;
 
 let amdgpuDirCache = null;
-let cpuPowerFileCache = null;
-let cpuPowerSampleCache = {
-  path: null,
-  lastRawValue: null,
-  lastTimestamp: 0,
-  watts: 0,
+let cpuPowerSourceCache = {
+  timestamp: 0,
+  sources: [],
 };
+let cpuPowerSampleCache = Object.create(null);
 let procCache = { timestamp: 0, data: { list: [] } };
 let networkCache = { timestamp: 0, iface: null };
 let diskCache = {
   timestamp: 0,
   summary: { available: false, percent: 0, freeGB: 0 },
+  refreshPromise: null,
 };
 
 const toolCache = new Map();
@@ -134,7 +134,7 @@ function getAdaptiveFontSize(text, baseSize, minSize, softLimit = 6, step = 2) {
 }
 
 function shellEscape(value) {
-  return `'${String(value).replace(/'/g, `'"'"'`)}'`;
+  return `'${String(value).replace(/'/g, `'\"'\"'`)}'`;
 }
 
 function normalizeSettings(settings = {}) {
@@ -194,7 +194,7 @@ function escapeXml(value = '') {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+    .replace(/\"/g, '&quot;')
     .replace(/'/g, '&apos;');
 }
 
@@ -266,7 +266,7 @@ function showTransientImage(context, image, duration = TRANSIENT_IMAGE_MS) {
 
 function getShortProcName(name) {
   const cleaned = String(name || '')
-    .split(/[\/\\]/)
+    .split(/[\\/\\\\]/)
     .pop()
     .replace(/\.(exe|bin|AppImage)$/i, '');
 
@@ -392,9 +392,9 @@ function generateButtonImage(icon, title, line1, line2, percent = -1) {
   const safeLine1 = String(line1 || '');
   const safeLine2 = String(line2 || '');
 
-  const titleSize = getAdaptiveFontSize(safeTitle, 18, 14, 8, 1);
-  const line1Size = getAdaptiveFontSize(safeLine1, 40, 24, 5, 2);
-  const line2Size = getAdaptiveFontSize(safeLine2, 17, 12, 16, 1);
+  const titleSize = getAdaptiveFontSize(safeTitle, 20, 16, 8, 1);
+  const line1Size = getAdaptiveFontSize(safeLine1, 38, 22, 5, 2);
+  const line2Size = getAdaptiveFontSize(safeLine2, 18, 12, 16, 1);
 
   let barHtml = '';
 
@@ -409,10 +409,10 @@ function generateButtonImage(icon, title, line1, line2, percent = -1) {
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
     <rect width="144" height="144" fill="#18181b"/>
-    <text x="52" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="20" text-anchor="end">${escapeXml(icon)}</text>
-    <text x="56" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
-    <text x="72" y="74" fill="#ffffff" font-family="sans-serif" font-size="${line1Size}" font-weight="bold" text-anchor="middle">${escapeXml(safeLine1)}</text>
-    <text x="72" y="100" fill="#a1a1aa" font-family="sans-serif" font-size="${line2Size}" text-anchor="middle">${escapeXml(safeLine2)}</text>
+    <text x="28" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="22" text-anchor="middle">${escapeXml(icon)}</text>
+    <text x="44" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
+    <text x="72" y="78" fill="#ffffff" font-family="sans-serif" font-size="${line1Size}" font-weight="bold" text-anchor="middle">${escapeXml(safeLine1)}</text>
+    <text x="72" y="102" fill="#a1a1aa" font-family="sans-serif" font-size="${line2Size}" text-anchor="middle">${escapeXml(safeLine2)}</text>
     ${barHtml}
   </svg>`;
 
@@ -436,9 +436,9 @@ function generateDialImage(icon, title, valueText, percent = -1, barColor = 'rgb
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
     <rect width="144" height="144" fill="#18181b"/>
-    <text x="52" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="20" text-anchor="end">${escapeXml(icon)}</text>
-    <text x="56" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
-    <text x="72" y="86" fill="#ffffff" font-family="sans-serif" font-size="${valueSize}" font-weight="bold" text-anchor="middle">${escapeXml(safeValue)}</text>
+    <text x="28" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="22" text-anchor="middle">${escapeXml(icon)}</text>
+    <text x="44" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
+    <text x="72" y="88" fill="#ffffff" font-family="sans-serif" font-size="${valueSize}" font-weight="bold" text-anchor="middle">${escapeXml(safeValue)}</text>
     ${barHtml}
   </svg>`;
 
@@ -463,6 +463,15 @@ function fileExists(filePath) {
 
 function readText(filePath) {
   return fs.readFileSync(filePath, 'utf8').trim();
+}
+
+function readOptionalText(filePath) {
+  try {
+    if (!fileExists(filePath)) return '';
+    return readText(filePath);
+  } catch {
+    return '';
+  }
 }
 
 function findAmdGpuDir(force = false) {
@@ -547,33 +556,18 @@ function getAmdGpuStats() {
   }
 }
 
-function findCpuPowerFile(force = false) {
-  if (cpuPowerFileCache && !force && fileExists(cpuPowerFileCache)) {
-    return cpuPowerFileCache;
+function scanCpuPowerSources(force = false) {
+  const now = Date.now();
+
+  if (!force && (now - cpuPowerSourceCache.timestamp) < CPU_POWER_SOURCE_CACHE_MS && cpuPowerSourceCache.sources.length > 0) {
+    return cpuPowerSourceCache.sources;
   }
 
-  cpuPowerFileCache = null;
+  const sources = [];
 
   try {
     const hwmonRoot = '/sys/class/hwmon';
     const dirs = fs.readdirSync(hwmonRoot);
-
-    const nameRank = {
-      zenergy: 0,
-      zenpower: 1,
-      amd_energy: 2,
-    };
-
-    const fileRank = {
-      power1_average: 0,
-      power1_input: 1,
-      power_input: 2,
-      energy1_input: 3,
-      energy_input: 4,
-    };
-
-    let bestCandidate = null;
-    let bestScore = Number.POSITIVE_INFINITY;
 
     for (const dir of dirs) {
       const fullPath = path.join(hwmonRoot, dir);
@@ -582,115 +576,149 @@ function findCpuPowerFile(force = false) {
       if (!fileExists(namePath)) continue;
 
       const name = readText(namePath);
-      if (!(name in nameRank)) continue;
+      if (!['zenpower', 'amd_energy', 'zenergy'].includes(name)) continue;
 
-      for (const candidate of Object.keys(fileRank)) {
-        const candidatePath = path.join(fullPath, candidate);
-        if (!fileExists(candidatePath)) continue;
+      const entries = fs.readdirSync(fullPath);
 
-        const score = (nameRank[name] * 10) + fileRank[candidate];
-        if (score < bestScore) {
-          bestScore = score;
-          bestCandidate = candidatePath;
+      for (const entry of entries) {
+        let type = '';
+
+        if (/^power\d+_(average|input)$/.test(entry) || entry === 'power_input') {
+          type = 'power';
+        } else if (/^energy\d+_input$/.test(entry) || entry === 'energy_input') {
+          type = 'energy';
+        } else {
+          continue;
         }
-      }
-    }
 
-    if (bestCandidate) {
-      cpuPowerFileCache = bestCandidate;
-      return cpuPowerFileCache;
+        const entryPath = path.join(fullPath, entry);
+        if (!fileExists(entryPath)) continue;
+
+        const labelPath = entry
+          .replace(/_average$/, '_label')
+          .replace(/_input$/, '_label');
+
+        sources.push({
+          name,
+          type,
+          path: entryPath,
+          file: entry,
+          label: readOptionalText(path.join(fullPath, labelPath)),
+        });
+      }
     }
   } catch (error) {
     warnOnce('cpu-power-scan-failed', `cpu power scan failed: ${error.message}`);
+  }
+
+  cpuPowerSourceCache = {
+    timestamp: now,
+    sources,
+  };
+
+  return sources;
+}
+
+function getCpuPowerSourcePriority(source) {
+  const text = `${source.name} ${source.label} ${source.file}`.toLowerCase();
+  let score = 0;
+
+  if (/(package|socket|total|cpu|ppt)/.test(text)) score += 1000;
+  if (/core/.test(text)) score -= 25;
+  if (/(soc|gfx|igpu|mem|misc)/.test(text)) score -= 350;
+
+  if (source.type === 'power') score += 250;
+  if (source.name === 'zenpower') score += 120;
+  if (source.name === 'zenergy') score += 80;
+  if (source.name === 'amd_energy') score += 20;
+
+  return score;
+}
+
+function readCpuPowerSource(source) {
+  try {
+    const rawValue = Number.parseInt(readText(source.path), 10);
+    if (!Number.isFinite(rawValue)) return null;
+
+    if (source.type === 'power') {
+      const watts = rawValue / 1000000;
+      if (!Number.isFinite(watts) || watts < 0) return null;
+      return watts;
+    }
+
+    if (source.type === 'energy') {
+      const now = Date.now();
+      const sample = cpuPowerSampleCache[source.path] || {
+        lastRawValue: null,
+        lastTimestamp: 0,
+        watts: 0,
+      };
+
+      if (
+        Number.isFinite(sample.lastRawValue) &&
+        sample.lastTimestamp > 0 &&
+        rawValue >= sample.lastRawValue
+      ) {
+        const deltaEnergyMicroJoules = rawValue - sample.lastRawValue;
+        const deltaSeconds = (now - sample.lastTimestamp) / 1000;
+
+        if (deltaSeconds > 0) {
+          const watts = (deltaEnergyMicroJoules / 1000000) / deltaSeconds;
+          if (Number.isFinite(watts) && watts >= 0) {
+            sample.watts = watts;
+          }
+        }
+      } else if (Number.isFinite(sample.lastRawValue) && rawValue < sample.lastRawValue) {
+        sample.watts = 0;
+      }
+
+      sample.lastRawValue = rawValue;
+      sample.lastTimestamp = now;
+      cpuPowerSampleCache[source.path] = sample;
+
+      if (Number.isFinite(sample.watts) && sample.watts >= 0) {
+        return sample.watts;
+      }
+    }
+  } catch (error) {
+    warnOnce(`cpu-power-read-failed:${source.path}`, `cpu power read failed for ${source.path}: ${error.message}`);
   }
 
   return null;
 }
 
 function getCpuPower() {
-  const powerFile = findCpuPowerFile();
+  const sources = scanCpuPowerSources();
 
-  if (!powerFile) {
+  if (!sources.length) {
     return { available: false, watts: 0 };
   }
 
-  try {
-    const rawValue = Number.parseInt(readText(powerFile), 10);
-    if (!Number.isFinite(rawValue)) {
-      return { available: false, watts: 0 };
+  let best = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const source of sources) {
+    const watts = readCpuPowerSource(source);
+    if (!Number.isFinite(watts) || watts < 0) continue;
+
+    const score = getCpuPowerSourcePriority(source) + Math.min(watts, 500);
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = { source, watts };
     }
+  }
 
-    if (powerFile.endsWith('power1_average') || powerFile.endsWith('power1_input') || powerFile.endsWith('power_input')) {
-      const watts = rawValue / 1000000;
-      if (!Number.isFinite(watts) || watts < 0) {
-        return { available: false, watts: 0 };
-      }
-
-      const rounded = watts < 10 ? Math.round(watts * 10) / 10 : Math.round(watts);
-      return { available: true, watts: rounded };
-    }
-
-    if (powerFile.endsWith('energy1_input') || powerFile.endsWith('energy_input')) {
-      const now = Date.now();
-
-      if (cpuPowerSampleCache.path !== powerFile) {
-        cpuPowerSampleCache = {
-          path: powerFile,
-          lastRawValue: rawValue,
-          lastTimestamp: now,
-          watts: 0,
-        };
-        return { available: false, watts: 0 };
-      }
-
-      if (
-        Number.isFinite(cpuPowerSampleCache.lastRawValue) &&
-        cpuPowerSampleCache.lastTimestamp > 0 &&
-        rawValue >= cpuPowerSampleCache.lastRawValue
-      ) {
-        const deltaEnergyMicroJoules = rawValue - cpuPowerSampleCache.lastRawValue;
-        const deltaSeconds = (now - cpuPowerSampleCache.lastTimestamp) / 1000;
-
-        if (deltaSeconds > 0) {
-          const watts = (deltaEnergyMicroJoules / 1000000) / deltaSeconds;
-          if (Number.isFinite(watts) && watts >= 0) {
-            cpuPowerSampleCache.watts = watts;
-          }
-        }
-      } else if (
-        Number.isFinite(cpuPowerSampleCache.lastRawValue) &&
-        rawValue < cpuPowerSampleCache.lastRawValue
-      ) {
-        cpuPowerSampleCache.watts = 0;
-      }
-
-      cpuPowerSampleCache.path = powerFile;
-      cpuPowerSampleCache.lastRawValue = rawValue;
-      cpuPowerSampleCache.lastTimestamp = now;
-
-      if (Number.isFinite(cpuPowerSampleCache.watts) && cpuPowerSampleCache.watts >= 0) {
-        const rounded = cpuPowerSampleCache.watts < 10
-          ? Math.round(cpuPowerSampleCache.watts * 10) / 10
-          : Math.round(cpuPowerSampleCache.watts);
-
-        return { available: true, watts: rounded };
-      }
-
-      return { available: false, watts: 0 };
-    }
-
-    return { available: false, watts: 0 };
-  } catch (error) {
-    cpuPowerFileCache = null;
-    cpuPowerSampleCache = {
-      path: null,
-      lastRawValue: null,
-      lastTimestamp: 0,
-      watts: 0,
-    };
-    warnOnce('cpu-power-read-failed', `cpu power read failed: ${error.message}`);
+  if (!best) {
     return { available: false, watts: 0 };
   }
+
+  warnOnce(
+    `cpu-power-source:${best.source.path}`,
+    `cpu power source selected: ${best.source.name} ${best.source.file}${best.source.label ? ` (${best.source.label})` : ''}`
+  );
+
+  return { available: true, watts: best.watts };
 }
 
 function buildDiskSummary(fsEntries) {
@@ -722,28 +750,50 @@ function buildDiskSummary(fsEntries) {
   };
 }
 
-async function getDiskSummary(force = false) {
-  const now = Date.now();
-
-  if (!force && (now - diskCache.timestamp) < DISK_CACHE_MS) {
-    return diskCache.summary;
+async function refreshDiskSummary() {
+  if (diskCache.refreshPromise) {
+    return diskCache.refreshPromise;
   }
 
-  try {
-    const fsEntries = await si.fsSize();
-    diskCache = {
-      timestamp: now,
-      summary: buildDiskSummary(fsEntries),
-    };
-  } catch (error) {
-    warnOnce('disk-failed', `disk read failed: ${error.message}`);
-    diskCache = {
-      timestamp: now,
-      summary: { available: false, percent: 0, freeGB: 0 },
-    };
+  diskCache.refreshPromise = si.fsSize()
+    .then((entries) => {
+      diskCache.summary = buildDiskSummary(entries);
+      diskCache.timestamp = Date.now();
+      return diskCache.summary;
+    })
+    .catch((error) => {
+      warnOnce('disk-failed', `disk read failed: ${error.message}`);
+      return diskCache.summary;
+    })
+    .finally(() => {
+      diskCache.refreshPromise = null;
+    });
+
+  return diskCache.refreshPromise;
+}
+
+function getDiskSummary(force = false) {
+  const now = Date.now();
+
+  if (force || (now - diskCache.timestamp) > DISK_CACHE_MS) {
+    void refreshDiskSummary();
   }
 
   return diskCache.summary;
+}
+
+function updateDiskUI(context) {
+  const diskSummary = getDiskSummary(false);
+
+  if (!diskSummary.available) {
+    sendUpdateIfChanged(context, generateButtonImage('🖴', 'DISKS', '...', 'LADEN...', -1));
+    return;
+  }
+
+  sendUpdateIfChanged(
+    context,
+    generateButtonImage('🖴', 'DISKS', `${Math.round(diskSummary.percent)}%`, `${Math.round(diskSummary.freeGB)} GB free`, diskSummary.percent)
+  );
 }
 
 async function detectActiveInterface(force = false) {
@@ -1098,6 +1148,15 @@ ws.on('message', async (data) => {
         await updateAudioImmediately(context);
       }
 
+      if (action === ACTIONS.disk) {
+        updateDiskUI(context);
+        void refreshDiskSummary().then(() => {
+          if (activeContexts[context]) {
+            updateDiskUI(context);
+          }
+        });
+      }
+
       if (!pollingInterval) startPolling();
       if (!timerInterval) startTimerLoop();
       return;
@@ -1113,6 +1172,8 @@ ws.on('message', async (data) => {
         updateBrightnessUI(context);
       } else if (action === ACTIONS.ping) {
         await updatePingImmediately(context);
+      } else if (action === ACTIONS.disk) {
+        updateDiskUI(context);
       }
 
       return;
@@ -1257,7 +1318,7 @@ function startPolling() {
       let cpuData = {};
       let cpuTemp = {};
       let memData = {};
-      let diskSummary = { available: false, percent: 0, freeGB: 0 };
+      let diskSummary = getDiskSummary(false);
       let audioData = { available: false, vol: 0, muted: false };
       let procData = procCache.data;
 
@@ -1281,7 +1342,9 @@ function startPolling() {
       }
 
       if (needsDisk) {
-        promises.push(getDiskSummary(false).then((data) => { diskSummary = data; }));
+        promises.push(Promise.resolve().then(() => {
+          diskSummary = getDiskSummary(false);
+        }));
       }
 
       if (needsAudio) {
@@ -1350,7 +1413,7 @@ function startPolling() {
           } else {
             const load = Math.round(cpuData.currentLoad || 0);
             const temp = Math.round(cpuTemp.main || 0);
-            const wattsText = cpuPower.available ? `${cpuPower.watts}W` : 'NO PWR';
+            const wattsText = cpuPower.available ? `${Math.max(0, Math.round(cpuPower.watts))}W` : 'NO PWR';
             image = generateButtonImage('💻', 'CPU', `${load}%`, `${wattsText} | ${temp}°C`, load);
           }
         } else if (action === ACTIONS.gpu) {
@@ -1389,7 +1452,7 @@ function startPolling() {
           }
         } else if (action === ACTIONS.disk) {
           if (!diskSummary.available) {
-            image = unavailableButton('🖴', 'DISKS', 'NO DATA');
+            image = generateButtonImage('🖴', 'DISKS', '...', 'LADEN...', -1);
           } else {
             image = generateButtonImage('🖴', 'DISKS', `${Math.round(diskSummary.percent)}%`, `${Math.round(diskSummary.freeGB)} GB free`, diskSummary.percent);
           }
