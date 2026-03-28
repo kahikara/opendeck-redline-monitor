@@ -100,57 +100,43 @@
     websocket.send(JSON.stringify(payload));
   }
 
-  function getTargetContexts() {
-    const contexts = [];
-    if (uuid) contexts.push(uuid);
-    if (actionContext && actionContext !== uuid) contexts.push(actionContext);
-    return contexts;
-  }
-
   function saveSettings() {
     const settings = collectSettings();
-    const contexts = getTargetContexts();
 
-    if (contexts.length === 0) {
+    if (!actionContext) {
       console.log('[Redline PI] local save', settings);
       setStatus('Local preview only');
       return;
     }
 
-    for (const context of contexts) {
-      send({
-        event: 'setSettings',
-        context,
-        payload: settings,
-      });
-    }
+    send({
+      event: 'setSettings',
+      context: actionContext,
+      payload: settings,
+    });
 
     if (actionInfo?.action) {
-      for (const context of contexts) {
-        send({
-          event: 'sendToPlugin',
-          action: actionInfo.action,
-          context,
-          payload: {
-            type: 'saveSettings',
-            settings,
-          },
-        });
-      }
+      send({
+        event: 'sendToPlugin',
+        action: actionInfo.action,
+        context: actionContext,
+        payload: {
+          type: 'saveSettings',
+          settings,
+        },
+      });
     }
 
     setStatus('Settings saved');
   }
 
   function requestSettings() {
-    const contexts = getTargetContexts();
+    if (!actionContext) return;
 
-    for (const context of contexts) {
-      send({
-        event: 'getSettings',
-        context,
-      });
-    }
+    send({
+      event: 'getSettings',
+      context: actionContext,
+    });
   }
 
   window.connectElgatoStreamDeckSocket = function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, inActionInfo) {
@@ -188,12 +174,12 @@
         return;
       }
 
-      if (message.event === 'didReceiveSettings' && getTargetContexts().includes(message.context)) {
+      if (message.event === 'didReceiveSettings' && message.context === actionContext) {
         applySettings(message.payload?.settings || {});
         setStatus('Settings loaded');
       }
 
-      if (message.event === 'sendToPropertyInspector' && getTargetContexts().includes(message.context)) {
+      if (message.event === 'sendToPropertyInspector' && message.context === actionContext) {
         if (message.payload?.settings) {
           applySettings(message.payload.settings);
           setStatus('Settings synced');
