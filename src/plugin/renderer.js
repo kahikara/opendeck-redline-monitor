@@ -1,0 +1,74 @@
+const { clamp, getAdaptiveFontSize, escapeXml } = require('./utils');
+
+function generateButtonImage(icon, title, line1, line2, percent = -1) {
+  const safeTitle = String(title || '');
+  const safeLine1 = String(line1 || '');
+  const safeLine2 = String(line2 || '');
+
+  const titleSize = getAdaptiveFontSize(safeTitle, 19, 15, 8, 1);
+  const line1Size = getAdaptiveFontSize(safeLine1, 35, 21, 5, 2);
+  const line2Size = getAdaptiveFontSize(safeLine2, 20, 13, 16, 1);
+
+  let barHtml = '';
+
+  if (percent >= 0) {
+    const p = clamp(percent, 0, 100);
+    const r = p > 50 ? 255 : Math.floor((p * 2) * 255 / 100);
+    const g = p < 50 ? 255 : Math.floor(((100 - p) * 2) * 255 / 100);
+    const width = (112 * p) / 100;
+
+    barHtml = `<rect x="16" y="122" width="112" height="8" fill="#333" rx="4"/><rect x="16" y="122" width="${width}" height="8" fill="rgb(${r},${g},0)" rx="4"/>`;
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
+    <rect width="144" height="144" fill="#18181b"/>
+    <text x="60" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="21" text-anchor="end">${escapeXml(icon)}</text>
+    <text x="64" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
+    <text x="72" y="76" fill="#ffffff" font-family="sans-serif" font-size="${line1Size}" font-weight="bold" text-anchor="middle">${escapeXml(safeLine1)}</text>
+    <text x="72" y="104" fill="#a1a1aa" font-family="sans-serif" font-size="${line2Size}" text-anchor="middle">${escapeXml(safeLine2)}</text>
+    ${barHtml}
+  </svg>`;
+
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
+function generateDialImage(icon, title, valueText, percent = -1, barColor = 'rgb(74, 222, 128)') {
+  const safeTitle = String(title || '');
+  const safeValue = String(valueText || '');
+
+  const titleSize = getAdaptiveFontSize(safeTitle, 18, 14, 10, 1);
+  const valueSize = getAdaptiveFontSize(safeValue, 40, 24, 4, 2);
+
+  let barHtml = '';
+
+  if (percent >= 0) {
+    const p = clamp(percent, 0, 100);
+    const width = (100 * p) / 100;
+    barHtml = `<rect x="22" y="115" width="100" height="8" fill="#333" rx="4"/><rect x="22" y="115" width="${width}" height="8" fill="${escapeXml(barColor)}" rx="4"/>`;
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
+    <rect width="144" height="144" fill="#18181b"/>
+    <text x="60" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="21" text-anchor="end">${escapeXml(icon)}</text>
+    <text x="64" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
+    <text x="72" y="86" fill="#ffffff" font-family="sans-serif" font-size="${valueSize}" font-weight="bold" text-anchor="middle">${escapeXml(safeValue)}</text>
+    ${barHtml}
+  </svg>`;
+
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
+function unavailableButton(icon, title, reason) {
+  return generateButtonImage(icon, title, 'N/A', reason, -1);
+}
+
+function unavailableDial(icon, title, reason) {
+  return generateDialImage(icon, title, reason, -1, 'rgb(239, 68, 68)');
+}
+
+module.exports = {
+  generateButtonImage,
+  generateDialImage,
+  unavailableButton,
+  unavailableDial,
+};

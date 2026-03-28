@@ -1,11 +1,11 @@
 {
   "name": "com.kahikara.opendeck-redline.sdplugin",
-  "version": "1.1.9",
+  "version": "1.2.0",
   "description": "An OpenDeck plugin for AMD focused Linux monitoring",
   "main": "index.js",
   "scripts": {
     "clean": "rm -rf dist",
-    "check": "node --check index.js && node --check pi/main.js",
+    "check": "node --check index.js && node --check pi/main.js && find src -name '*.js' -print0 | xargs -0 -n1 node --check",
     "validate": "./build-plugin.sh --validate",
     "build": "./build-plugin.sh",
     "build:release": "./build-plugin.sh",
