@@ -62,7 +62,6 @@ const ws = new WebSocket(`ws://127.0.0.1:${port}`);
 
 const activeContexts = Object.create(null);
 const activeTimers = Object.create(null);
-const lastSentImages = Object.create(null);
 const transientImageTimers = Object.create(null);
 const renderRetryTimers = Object.create(null);
 const contextSettings = Object.create(null);
@@ -245,6 +244,10 @@ function getSettingsForContext(context, action = '') {
   return normalizeSettings({});
 }
 
+function getPluginWideSettings() {
+  return normalizeSettings(globalPluginSettings || {});
+}
+
 function getPingState(context) {
   if (!pingStates[context]) {
     pingStates[context] = {
@@ -305,7 +308,7 @@ function safeSend(payload) {
 }
 
 function sendUpdateIfChanged(context, image) {
-  if (!image || image === lastSentImages[context]) return;
+  if (!image) return;
 
   safeSend({
     event: 'setImage',
@@ -315,8 +318,6 @@ function sendUpdateIfChanged(context, image) {
       target: 0,
     },
   });
-
-  lastSentImages[context] = image;
 }
 
 function clearTransientTimer(context) {
@@ -335,14 +336,13 @@ function clearRenderRetries(context) {
   }
 }
 
-function queueRenderRetries(context, imageFactory, delays = [0, 300, 900]) {
+function queueRenderRetries(context, imageFactory, delays = [0, 250, 800, 1600]) {
   clearRenderRetries(context);
   renderRetryTimers[context] = [];
 
   for (const delay of delays) {
     const timer = setTimeout(() => {
       if (!activeContexts[context]) return;
-      delete lastSentImages[context];
       sendUpdateIfChanged(context, imageFactory());
     }, delay);
 
@@ -355,7 +355,6 @@ function showTransientImage(context, image, duration = TRANSIENT_IMAGE_MS) {
   sendUpdateIfChanged(context, image);
 
   transientImageTimers[context] = setTimeout(() => {
-    delete lastSentImages[context];
     delete transientImageTimers[context];
   }, duration);
 }
@@ -596,526 +595,6 @@ function unavailableDial(icon, title, reason) {
   return generateDialImage(icon, title, reason, -1, 'rgb(239, 68, 68)');
 }
 
-function fileExists(filePath) {
-  try {
-    return fs.existsSync(filePath);
-  } catch {
-    return false;
-  }
-}
-
-function readText(filePath) {
-  return fs.readFileSync(filePath, 'utf8').trim();
-}
-
-function readOptionalText(filePath) {
-  try {
-    if (!fileExists(filePath)) return '';
-    return readText(filePath);
-  } catch {
-    return '';
-  }
-}
-
-function findAmdGpuDir(force = false) {
-  if (amdgpuDirCache && !force && fileExists(path.join(amdgpuDirCache, 'name'))) {
-    return amdgpuDirCache;
-  }
-
-  amdgpuDirCache = null;
-
-  try {
-    const hwmonRoot = '/sys/class/hwmon';
-    const dirs = fs.readdirSync(hwmonRoot);
-
-    for (const dir of dirs) {
-      const fullPath = path.join(hwmonRoot, dir);
-      const namePath = path.join(fullPath, 'name');
-
-      if (!fileExists(namePath)) continue;
-      if (readText(namePath) === 'amdgpu') {
-        amdgpuDirCache = fullPath;
-        return amdgpuDirCache;
-      }
-    }
-  } catch (error) {
-    warnOnce('amdgpu-scan-failed', `amdgpu scan failed: ${error.message}`);
-  }
-
-  return null;
-}
-
-function getAmdGpuStats() {
-  const gpuDir = findAmdGpuDir();
-
-  if (!gpuDir) {
-    return {
-      available: false,
-      temp: 0,
-      power: 0,
-      usage: 0,
-      vramUsed: 0,
-      vramTotal: 0,
-    };
-  }
-
-  const readNumber = (file) => {
-    const fullPath = path.join(gpuDir, file);
-    if (!fileExists(fullPath)) return null;
-    const value = Number.parseInt(readText(fullPath), 10);
-    return Number.isFinite(value) ? value : null;
-  };
-
-  try {
-    const tempEdge = readNumber('temp1_input');
-    const power = readNumber('power1_average') ?? readNumber('power1_input');
-    const usagePath = path.join(gpuDir, 'device', 'gpu_busy_percent');
-    const vramUsedPath = path.join(gpuDir, 'device', 'mem_info_vram_used');
-    const vramTotalPath = path.join(gpuDir, 'device', 'mem_info_vram_total');
-
-    const usage = fileExists(usagePath) ? Number.parseInt(readText(usagePath), 10) : 0;
-    const vramUsed = fileExists(vramUsedPath) ? Number.parseInt(readText(vramUsedPath), 10) : 0;
-    const vramTotal = fileExists(vramTotalPath) ? Number.parseInt(readText(vramTotalPath), 10) : 0;
-
-    return {
-      available: true,
-      temp: tempEdge ? Math.round(tempEdge / 1000) : 0,
-      power: power ? Math.round(power / 1000000) : 0,
-      usage: Number.isFinite(usage) ? usage : 0,
-      vramUsed: Number.isFinite(vramUsed) ? vramUsed : 0,
-      vramTotal: Number.isFinite(vramTotal) ? vramTotal : 0,
-    };
-  } catch (error) {
-    amdgpuDirCache = null;
-    warnOnce('amdgpu-read-failed', `amdgpu read failed: ${error.message}`);
-    return {
-      available: false,
-      temp: 0,
-      power: 0,
-      usage: 0,
-      vramUsed: 0,
-      vramTotal: 0,
-    };
-  }
-}
-
-function scanCpuPowerSources(force = false) {
-  const now = Date.now();
-
-  if (!force && (now - cpuPowerSourceCache.timestamp) < CPU_POWER_SOURCE_CACHE_MS && cpuPowerSourceCache.sources.length > 0) {
-    return cpuPowerSourceCache.sources;
-  }
-
-  const sources = [];
-
-  try {
-    const hwmonRoot = '/sys/class/hwmon';
-    const dirs = fs.readdirSync(hwmonRoot);
-
-    for (const dir of dirs) {
-      const fullPath = path.join(hwmonRoot, dir);
-      const namePath = path.join(fullPath, 'name');
-
-      if (!fileExists(namePath)) continue;
-
-      const name = readText(namePath);
-      if (!['zenpower', 'amd_energy', 'zenergy'].includes(name)) continue;
-
-      const entries = fs.readdirSync(fullPath);
-
-      for (const entry of entries) {
-        let type = '';
-
-        if (/^power\d+_(average|input)$/.test(entry) || entry === 'power_input') {
-          type = 'power';
-        } else if (/^energy\d+_input$/.test(entry) || entry === 'energy_input') {
-          type = 'energy';
-        } else {
-          continue;
-        }
-
-        const entryPath = path.join(fullPath, entry);
-        if (!fileExists(entryPath)) continue;
-
-        const labelPath = entry
-          .replace(/_average$/, '_label')
-          .replace(/_input$/, '_label');
-
-        sources.push({
-          name,
-          type,
-          path: entryPath,
-          file: entry,
-          label: readOptionalText(path.join(fullPath, labelPath)),
-        });
-      }
-    }
-  } catch (error) {
-    warnOnce('cpu-power-scan-failed', `cpu power scan failed: ${error.message}`);
-  }
-
-  cpuPowerSourceCache = {
-    timestamp: now,
-    sources,
-  };
-
-  return sources;
-}
-
-function getCpuPowerSourcePriority(source) {
-  const text = `${source.name} ${source.label} ${source.file}`.toLowerCase();
-  let score = 0;
-
-  if (/(package|socket|total|cpu|ppt)/.test(text)) score += 1000;
-  if (/core/.test(text)) score -= 25;
-  if (/(soc|gfx|igpu|mem|misc)/.test(text)) score -= 350;
-
-  if (source.type === 'power') score += 250;
-  if (source.name === 'zenpower') score += 120;
-  if (source.name === 'zenergy') score += 80;
-  if (source.name === 'amd_energy') score += 20;
-
-  return score;
-}
-
-function readCpuPowerSource(source) {
-  try {
-    const rawValue = Number.parseInt(readText(source.path), 10);
-    if (!Number.isFinite(rawValue)) return null;
-
-    if (source.type === 'power') {
-      const watts = rawValue / 1000000;
-      if (!Number.isFinite(watts) || watts < 0) return null;
-      return watts;
-    }
-
-    if (source.type === 'energy') {
-      const now = Date.now();
-      const sample = cpuPowerSampleCache[source.path] || {
-        lastRawValue: null,
-        lastTimestamp: 0,
-        watts: 0,
-      };
-
-      if (
-        Number.isFinite(sample.lastRawValue) &&
-        sample.lastTimestamp > 0 &&
-        rawValue >= sample.lastRawValue
-      ) {
-        const deltaEnergyMicroJoules = rawValue - sample.lastRawValue;
-        const deltaSeconds = (now - sample.lastTimestamp) / 1000;
-
-        if (deltaSeconds > 0) {
-          const watts = (deltaEnergyMicroJoules / 1000000) / deltaSeconds;
-          if (Number.isFinite(watts) && watts >= 0) {
-            sample.watts = watts;
-          }
-        }
-      } else if (Number.isFinite(sample.lastRawValue) && rawValue < sample.lastRawValue) {
-        sample.watts = 0;
-      }
-
-      sample.lastRawValue = rawValue;
-      sample.lastTimestamp = now;
-      cpuPowerSampleCache[source.path] = sample;
-
-      if (Number.isFinite(sample.watts) && sample.watts >= 0) {
-        return sample.watts;
-      }
-    }
-  } catch (error) {
-    warnOnce(`cpu-power-read-failed:${source.path}`, `cpu power read failed for ${source.path}: ${error.message}`);
-  }
-
-  return null;
-}
-
-function getCpuPower() {
-  const sources = scanCpuPowerSources();
-
-  if (!sources.length) {
-    return { available: false, watts: 0 };
-  }
-
-  let best = null;
-  let bestScore = Number.NEGATIVE_INFINITY;
-
-  for (const source of sources) {
-    const watts = readCpuPowerSource(source);
-    if (!Number.isFinite(watts) || watts < 0) continue;
-
-    const score = getCpuPowerSourcePriority(source) + Math.min(watts, 500);
-
-    if (score > bestScore) {
-      bestScore = score;
-      best = { source, watts };
-    }
-  }
-
-  if (!best) {
-    return { available: false, watts: 0 };
-  }
-
-  warnOnce(
-    `cpu-power-source:${best.source.path}`,
-    `cpu power source selected: ${best.source.name} ${best.source.file}${best.source.label ? ` (${best.source.label})` : ''}`
-  );
-
-  return { available: true, watts: best.watts };
-}
-
-function buildDiskSummary(fsEntries) {
-  const uniqueDisks = {};
-
-  for (const disk of fsEntries) {
-    if (!disk.fs || !disk.fs.startsWith('/dev/')) continue;
-    if (disk.fs.includes('loop')) continue;
-    if (disk.mount && (disk.mount.includes('/snap/') || disk.mount.includes('/docker/'))) continue;
-    uniqueDisks[disk.fs] = disk;
-  }
-
-  let totalSize = 0;
-  let totalUsed = 0;
-
-  for (const disk of Object.values(uniqueDisks)) {
-    totalSize += disk.size || 0;
-    totalUsed += disk.used || 0;
-  }
-
-  if (!totalSize) {
-    return { available: false, percent: 0, freeGB: 0 };
-  }
-
-  return {
-    available: true,
-    percent: (totalUsed / totalSize) * 100,
-    freeGB: (totalSize - totalUsed) / (1024 ** 3),
-  };
-}
-
-async function refreshDiskSummary() {
-  if (diskCache.refreshPromise) {
-    return diskCache.refreshPromise;
-  }
-
-  diskCache.refreshPromise = si.fsSize()
-    .then((entries) => {
-      diskCache.summary = buildDiskSummary(entries);
-      diskCache.timestamp = Date.now();
-      return diskCache.summary;
-    })
-    .catch((error) => {
-      warnOnce('disk-failed', `disk read failed: ${error.message}`);
-      return diskCache.summary;
-    })
-    .finally(() => {
-      diskCache.refreshPromise = null;
-    });
-
-  return diskCache.refreshPromise;
-}
-
-function getDiskSummary(force = false) {
-  const now = Date.now();
-
-  if (force || (now - diskCache.timestamp) > DISK_CACHE_MS) {
-    void refreshDiskSummary();
-  }
-
-  return diskCache.summary;
-}
-
-function updateDiskUI(context) {
-  const diskSummary = getDiskSummary(false);
-
-  if (!diskSummary.available) {
-    sendUpdateIfChanged(context, generateButtonImage('🖴', 'DISKS', '...', 'Loading...', -1));
-    return;
-  }
-
-  sendUpdateIfChanged(
-    context,
-    generateButtonImage('🖴', 'DISKS', `${Math.round(diskSummary.percent)}%`, `${Math.round(diskSummary.freeGB)} GB free`, diskSummary.percent)
-  );
-}
-
-async function detectActiveInterface(force = false) {
-  const now = Date.now();
-
-  if (!force && networkCache.iface && (now - networkCache.timestamp) < NETWORK_CACHE_MS) {
-    return networkCache.iface;
-  }
-
-  networkCache = { timestamp: now, iface: null };
-
-  try {
-    const interfaces = await si.networkInterfaces();
-
-    const candidates = interfaces.filter((iface) => {
-      const name = String(iface.iface || '');
-      return !iface.internal && !iface.virtual && name && iface.operstate === 'up';
-    });
-
-    if (candidates.length === 0) {
-      return null;
-    }
-
-    const preferred = [...candidates].sort((a, b) => scoreNetworkInterface(b) - scoreNetworkInterface(a))[0] || null;
-
-    networkCache.iface = preferred ? preferred.iface : null;
-    return networkCache.iface;
-  } catch (error) {
-    warnOnce('network-interface-detect-failed', `network interface detection failed: ${error.message}`);
-    return null;
-  }
-}
-
-async function getNetworkStats(overrideInterface = '') {
-  let iface = String(overrideInterface || '').trim();
-
-  try {
-    if (iface) {
-      const data = await si.networkStats(iface);
-      if (Array.isArray(data) && data.length > 0) {
-        return { available: true, iface, data };
-      }
-    }
-
-    iface = await detectActiveInterface();
-
-    if (iface) {
-      let data = await si.networkStats(iface);
-
-      if (Array.isArray(data) && data.length > 0) {
-        return { available: true, iface, data };
-      }
-
-      iface = await detectActiveInterface(true);
-
-      if (iface) {
-        data = await si.networkStats(iface);
-        if (Array.isArray(data) && data.length > 0) {
-          return { available: true, iface, data };
-        }
-      }
-    }
-
-    const data = await si.networkStats();
-    return { available: Array.isArray(data) && data.length > 0, iface: null, data };
-  } catch (error) {
-    warnOnce('network-stats-failed', `network stats failed: ${error.message}`);
-    return { available: false, iface: null, data: [] };
-  }
-}
-
-async function refreshMonitorBrightness(force = false) {
-  const now = Date.now();
-
-  if (!force && (now - lastBrightnessSync) < BRIGHTNESS_REFRESH_MS) {
-    return monitorBrightnessAvailable;
-  }
-
-  lastBrightnessSync = now;
-
-  if (!(await commandExists('ddcutil'))) {
-    monitorBrightnessAvailable = false;
-    return false;
-  }
-
-  const result = await runCommand('ddcutil getvcp 10 --brief', 2500);
-  const match =
-    result.stdout.match(/current value =\s*([0-9]+)/i) ||
-    result.stdout.match(/current value:\s*([0-9]+)/i) ||
-    result.stdout.match(/C\s+([0-9]+)/);
-
-  if (match) {
-    monitorBrightness = clamp(Number.parseInt(match[1], 10) || 50, 0, 100);
-    monitorBrightnessAvailable = true;
-    return true;
-  }
-
-  monitorBrightnessAvailable = false;
-  warnOnce('ddcutil-brightness-read-failed', 'ddcutil brightness read failed');
-  return false;
-}
-
-async function setMonitorBrightness(value) {
-  monitorBrightness = clamp(value, 0, 100);
-
-  if (!(await commandExists('ddcutil'))) {
-    monitorBrightnessAvailable = false;
-    return false;
-  }
-
-  monitorBrightnessAvailable = true;
-
-  clearTimeout(ddcutilTimeout);
-  ddcutilTimeout = setTimeout(() => {
-    runCommand(`ddcutil setvcp 10 ${monitorBrightness} --noverify`, 2500).catch(() => {});
-  }, 300);
-
-  return true;
-}
-
-async function getPing(context, host, force = false) {
-  const state = getPingState(context);
-  const target = String(host || DEFAULT_SETTINGS.pingHost).trim() || DEFAULT_SETTINGS.pingHost;
-  const result = await runCommand(`ping -c 1 -W 2 ${shellEscape(target)}`, 4000);
-
-  if (result.error || !result.stdout) {
-    state.failedPings += 1;
-    if (state.failedPings > 3 || force) state.lastPing = 0;
-    return state.lastPing;
-  }
-
-  state.failedPings = 0;
-  const match = result.stdout.match(/time=([0-9.]+)/);
-
-  if (match) {
-    const milliseconds = Number.parseFloat(match[1]);
-    if (Number.isFinite(milliseconds)) {
-      state.lastPing = milliseconds > 0 && milliseconds < 1 ? 1 : Math.round(milliseconds);
-    }
-  }
-
-  return state.lastPing;
-}
-
-async function getAudio() {
-  if (!(await commandExists('wpctl'))) {
-    return { available: false, vol: 0, muted: false };
-  }
-
-  const result = await runCommand('wpctl get-volume @DEFAULT_AUDIO_SINK@', 2000);
-  if (result.error || !result.stdout) {
-    return { available: false, vol: 0, muted: false };
-  }
-
-  const match = result.stdout.match(/([0-9]*\.?[0-9]+)/);
-  const volume = match ? Math.round(Number.parseFloat(match[1]) * 100) : 0;
-  const muted = result.stdout.includes('MUTED');
-
-  return {
-    available: true,
-    vol: clamp(Number.isFinite(volume) ? volume : 0, 0, 100),
-    muted,
-  };
-}
-
-async function adjustVolume(ticks, stepPercent = 2) {
-  if (!(await commandExists('wpctl'))) return false;
-  const step = clamp(Number.parseInt(stepPercent, 10) || 2, 1, 20);
-  await runCommand('wpctl set-mute @DEFAULT_AUDIO_SINK@ 0', 1500);
-  await runCommand(`wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ ${ticks > 0 ? `${step}%+` : `${step}%-`}`, 1500);
-  return true;
-}
-
-async function toggleMute() {
-  if (!(await commandExists('wpctl'))) return false;
-  await runCommand('wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle', 1500);
-  return true;
-}
-
 function getTimerImage(context) {
   const timer = activeTimers[context];
   if (!timer) {
@@ -1211,10 +690,18 @@ function primeActionUI(context, action) {
     updateDiskUI(context);
     void refreshDiskSummary().then(() => {
       if (activeContexts[context]) {
-        delete lastSentImages[context];
         updateDiskUI(context);
       }
     });
+  }
+}
+
+function reprimeVisibleContexts() {
+  for (const context of Object.keys(activeContexts)) {
+    const action = activeContexts[context]?.action;
+    if (action === ACTIONS.audio || action === ACTIONS.timer || action === ACTIONS.monbright || action === ACTIONS.disk) {
+      primeActionUI(context, action);
+    }
   }
 }
 
@@ -1331,6 +818,7 @@ ws.on('message', async (data) => {
       }
 
       primeActionUI(context, action);
+      reprimeVisibleContexts();
 
       restartPollingIfNeeded();
 
@@ -1341,7 +829,6 @@ ws.on('message', async (data) => {
     if (event === 'didReceiveSettings') {
       const resolvedAction = getResolvedAction(context, action);
       storeSettingsForContext(context, message.payload?.settings || {}, resolvedAction);
-      delete lastSentImages[context];
 
       if (resolvedAction === ACTIONS.audio) {
         await updateAudioImmediately(context);
@@ -1363,7 +850,6 @@ ws.on('message', async (data) => {
       if (message.payload?.type === 'saveSettings') {
         const resolvedAction = getResolvedAction(context, action);
         storeSettingsForContext(context, message.payload?.settings || {}, resolvedAction);
-        delete lastSentImages[context];
 
         if (resolvedAction === ACTIONS.audio) {
           await updateAudioImmediately(context);
@@ -1385,7 +871,6 @@ ws.on('message', async (data) => {
     if (event === 'willDisappear') {
       delete activeContexts[context];
       delete activeTimers[context];
-      delete lastSentImages[context];
       delete contextSettings[context];
       delete pingStates[context];
       clearTransientTimer(context);
@@ -1401,24 +886,24 @@ ws.on('message', async (data) => {
     if (event === 'dialRotate') {
       const ticks = message.payload?.ticks || 0;
       const resolvedAction = getResolvedAction(context, action);
-      const settings = getSettingsForContext(context, resolvedAction);
+      const pluginSettings = getPluginWideSettings();
 
       if (resolvedAction === ACTIONS.audio) {
-        await adjustVolume(ticks, settings.volumeStep);
+        await adjustVolume(ticks, pluginSettings.volumeStep);
         await updateAudioImmediately(context);
       }
 
       if (resolvedAction === ACTIONS.timer) {
         const timer = activeTimers[context];
         if (timer && (timer.state === 'stopped' || timer.state === 'paused')) {
-          timer.total = Math.max(0, timer.total + (ticks * settings.timerStep * 60));
+          timer.total = Math.max(0, timer.total + (ticks * pluginSettings.timerStep * 60));
           timer.remaining = timer.total;
           updateTimerUI(context);
         }
       }
 
       if (resolvedAction === ACTIONS.monbright) {
-        await setMonitorBrightness(monitorBrightness + (ticks * settings.brightnessStep));
+        await setMonitorBrightness(monitorBrightness + (ticks * pluginSettings.brightnessStep));
         updateBrightnessUI(context);
       }
 
@@ -1649,7 +1134,8 @@ function startPolling() {
           } else {
             const download = (((netResult.data[0].rx_sec || 0) * 8) / 1000000).toFixed(1);
             const upload = (((netResult.data[0].tx_sec || 0) * 8) / 1000000).toFixed(1);
-            image = generateButtonImage('🌐', 'NET', `↓ ${download}`, `↑ ${upload} Mb/s`, -1);
+            const ifaceLabel = (netResult.iface || 'auto').slice(0, 14);
+            image = generateButtonImage('🌐', 'NET', `↓${download} ↑${upload}`, ifaceLabel, -1);
           }
         } else if (action === ACTIONS.disk) {
           if (!diskSummary.available) {
