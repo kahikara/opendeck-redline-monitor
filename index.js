@@ -44,9 +44,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   brightnessStep: 5,
   timerStep: 1,
   topMode: 'grouped',
+  refreshRate: 3,
 });
 
-const POLL_INTERVAL_MS = 2000;
 const TOP_REFRESH_MS = 4000;
 const TOP_HOLD_MS = 12000;
 const NETWORK_CACHE_MS = 10000;
@@ -64,6 +64,7 @@ const activeContexts = Object.create(null);
 const activeTimers = Object.create(null);
 const lastSentImages = Object.create(null);
 const transientImageTimers = Object.create(null);
+const renderRetryTimers = Object.create(null);
 const contextSettings = Object.create(null);
 const actionSettings = Object.create(null);
 const pingStates = Object.create(null);
@@ -71,6 +72,7 @@ const pingStates = Object.create(null);
 let pollingInterval = null;
 let timerInterval = null;
 let pollingInProgress = false;
+let currentPollingRateMs = 0;
 let ddcutilTimeout = null;
 let shuttingDown = false;
 
@@ -95,6 +97,7 @@ let diskCache = {
   summary: { available: false, percent: 0, freeGB: 0 },
   refreshPromise: null,
 };
+let globalPluginSettings = null;
 
 const toolCache = new Map();
 const warnedKeys = new Set();
@@ -172,11 +175,38 @@ function normalizeSettings(settings = {}) {
     normalized.topMode = settings.topMode;
   }
 
+  const refresh = Number.parseInt(settings.refreshRate, 10);
+  normalized.refreshRate = [1, 3, 5, 10].includes(refresh) ? refresh : DEFAULT_SETTINGS.refreshRate;
+
   return normalized;
+}
+
+function getEffectiveRefreshRateMs() {
+  const settings = normalizeSettings(globalPluginSettings || {});
+  return settings.refreshRate * 1000;
+}
+
+function restartPollingIfNeeded() {
+  const desired = getEffectiveRefreshRateMs();
+
+  if (pollingInterval && currentPollingRateMs === desired) {
+    return;
+  }
+
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+    currentPollingRateMs = 0;
+  }
+
+  if (Object.keys(activeContexts).length > 0) {
+    startPolling();
+  }
 }
 
 function storeSettingsForContext(context, settings, action = '') {
   const normalized = normalizeSettings(settings);
+  const previousRate = getEffectiveRefreshRateMs();
 
   if (context) {
     contextSettings[context] = normalized;
@@ -185,6 +215,15 @@ function storeSettingsForContext(context, settings, action = '') {
   const resolvedAction = action || activeContexts[context]?.action || '';
   if (resolvedAction) {
     actionSettings[resolvedAction] = normalized;
+  }
+
+  globalPluginSettings = {
+    ...(globalPluginSettings || {}),
+    ...normalized,
+  };
+
+  if (previousRate !== getEffectiveRefreshRateMs()) {
+    restartPollingIfNeeded();
   }
 }
 
@@ -197,6 +236,10 @@ function getSettingsForContext(context, action = '') {
 
   if (resolvedAction && actionSettings[resolvedAction]) {
     return normalizeSettings(actionSettings[resolvedAction]);
+  }
+
+  if (globalPluginSettings) {
+    return normalizeSettings(globalPluginSettings);
   }
 
   return normalizeSettings({});
@@ -280,6 +323,30 @@ function clearTransientTimer(context) {
   if (transientImageTimers[context]) {
     clearTimeout(transientImageTimers[context]);
     delete transientImageTimers[context];
+  }
+}
+
+function clearRenderRetries(context) {
+  if (renderRetryTimers[context]) {
+    for (const timer of renderRetryTimers[context]) {
+      clearTimeout(timer);
+    }
+    delete renderRetryTimers[context];
+  }
+}
+
+function queueRenderRetries(context, imageFactory, delays = [0, 300, 900]) {
+  clearRenderRetries(context);
+  renderRetryTimers[context] = [];
+
+  for (const delay of delays) {
+    const timer = setTimeout(() => {
+      if (!activeContexts[context]) return;
+      delete lastSentImages[context];
+      sendUpdateIfChanged(context, imageFactory());
+    }, delay);
+
+    renderRetryTimers[context].push(timer);
   }
 }
 
@@ -1049,9 +1116,11 @@ async function toggleMute() {
   return true;
 }
 
-function updateTimerUI(context) {
+function getTimerImage(context) {
   const timer = activeTimers[context];
-  if (!timer) return;
+  if (!timer) {
+    return generateDialImage('⏱️', 'TIMER', '0:00', 0, 'rgb(59, 130, 246)');
+  }
 
   const timeString = `${Math.floor(timer.remaining / 60)}:${String(timer.remaining % 60).padStart(2, '0')}`;
   const percent = timer.total > 0 ? Math.round((timer.remaining / timer.total) * 100) : 0;
@@ -1069,7 +1138,11 @@ function updateTimerUI(context) {
     icon = '🔔';
   }
 
-  sendUpdateIfChanged(context, generateDialImage(icon, title, timeString, percent, color));
+  return generateDialImage(icon, title, timeString, percent, color);
+}
+
+function updateTimerUI(context) {
+  sendUpdateIfChanged(context, getTimerImage(context));
 }
 
 function updateBrightnessUI(context) {
@@ -1106,6 +1179,43 @@ async function updatePingImmediately(context) {
   state.lastPingTime = Date.now();
   await getPing(context, target, true);
   sendUpdateIfChanged(context, generateButtonImage('⚡', 'PING', `${state.lastPing} ms`, targetLabel, Math.min(100, state.lastPing)));
+}
+
+function primeActionUI(context, action) {
+  if (!context || !action) return;
+
+  if (action === ACTIONS.audio) {
+    queueRenderRetries(context, () => generateDialImage('🔊', 'VOLUME', '...', 0, 'rgb(74, 222, 128)'));
+    void updateAudioImmediately(context);
+    return;
+  }
+
+  if (action === ACTIONS.timer) {
+    queueRenderRetries(context, () => getTimerImage(context));
+    updateTimerUI(context);
+    return;
+  }
+
+  if (action === ACTIONS.monbright) {
+    queueRenderRetries(context, () => generateDialImage('☀️', 'MONITOR', '...', 50, 'rgb(250, 204, 21)'));
+    void refreshMonitorBrightness(true).then(() => {
+      if (activeContexts[context]) {
+        updateBrightnessUI(context);
+      }
+    });
+    return;
+  }
+
+  if (action === ACTIONS.disk) {
+    queueRenderRetries(context, () => generateButtonImage('🖴', 'DISKS', '...', 'Loading...', -1));
+    updateDiskUI(context);
+    void refreshDiskSummary().then(() => {
+      if (activeContexts[context]) {
+        delete lastSentImages[context];
+        updateDiskUI(context);
+      }
+    });
+  }
 }
 
 async function openActionTool(action, context) {
@@ -1153,9 +1263,14 @@ function cleanupRuntime() {
   timerInterval = null;
   ddcutilTimeout = null;
   pollingInProgress = false;
+  currentPollingRateMs = 0;
 
   for (const context of Object.keys(transientImageTimers)) {
     clearTransientTimer(context);
+  }
+
+  for (const context of Object.keys(renderRetryTimers)) {
+    clearRenderRetries(context);
   }
 }
 
@@ -1215,32 +1330,10 @@ ws.on('message', async (data) => {
         activeTimers[context] = { total: 0, remaining: 0, state: 'stopped' };
       }
 
-      if (action === ACTIONS.monbright) {
-        sendUpdateIfChanged(context, generateDialImage('☀️', 'MONITOR', '...', 50, 'rgb(250, 204, 21)'));
-        await refreshMonitorBrightness(true);
-        updateBrightnessUI(context);
-      }
+      primeActionUI(context, action);
 
-      if (action === ACTIONS.audio) {
-        sendUpdateIfChanged(context, generateDialImage('🔊', 'VOLUME', '...', 0, 'rgb(74, 222, 128)'));
-        await updateAudioImmediately(context);
-      }
+      restartPollingIfNeeded();
 
-      if (action === ACTIONS.timer) {
-        updateTimerUI(context);
-      }
-
-      if (action === ACTIONS.disk) {
-        sendUpdateIfChanged(context, generateButtonImage('🖴', 'DISKS', '...', 'Loading...', -1));
-        updateDiskUI(context);
-        void refreshDiskSummary().then(() => {
-          if (activeContexts[context]) {
-            updateDiskUI(context);
-          }
-        });
-      }
-
-      if (!pollingInterval) startPolling();
       if (!timerInterval) startTimerLoop();
       return;
     }
@@ -1262,6 +1355,7 @@ ws.on('message', async (data) => {
         updateDiskUI(context);
       }
 
+      restartPollingIfNeeded();
       return;
     }
 
@@ -1282,6 +1376,8 @@ ws.on('message', async (data) => {
         } else if (resolvedAction === ACTIONS.disk) {
           updateDiskUI(context);
         }
+
+        restartPollingIfNeeded();
       }
       return;
     }
@@ -1293,6 +1389,7 @@ ws.on('message', async (data) => {
       delete contextSettings[context];
       delete pingStates[context];
       clearTransientTimer(context);
+      clearRenderRetries(context);
 
       if (Object.keys(activeContexts).length === 0) {
         cleanupRuntime();
@@ -1409,6 +1506,8 @@ function startTimerLoop() {
 }
 
 function startPolling() {
+  currentPollingRateMs = getEffectiveRefreshRateMs();
+
   pollingInterval = setInterval(async () => {
     if (pollingInProgress || shuttingDown) return;
     pollingInProgress = true;
@@ -1597,7 +1696,7 @@ function startPolling() {
     } finally {
       pollingInProgress = false;
     }
-  }, POLL_INTERVAL_MS);
+  }, currentPollingRateMs);
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));

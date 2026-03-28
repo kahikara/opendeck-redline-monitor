@@ -8,6 +8,7 @@
     brightnessStep: $('brightnessStep'),
     timerStep: $('timerStep'),
     topMode: $('topMode'),
+    refreshRate: $('refreshRate'),
   };
 
   const saveButton = $('saveButton');
@@ -25,6 +26,7 @@
     brightnessStep: 5,
     timerStep: 1,
     topMode: 'grouped',
+    refreshRate: 3,
   });
 
   function setStatus(text) {
@@ -60,6 +62,9 @@
       normalized.topMode = settings.topMode;
     }
 
+    const refresh = Number.parseInt(settings.refreshRate, 10);
+    normalized.refreshRate = [1, 3, 5, 10].includes(refresh) ? refresh : DEFAULT_SETTINGS.refreshRate;
+
     return normalized;
   }
 
@@ -72,6 +77,7 @@
     fields.brightnessStep.value = String(normalized.brightnessStep);
     fields.timerStep.value = String(normalized.timerStep);
     fields.topMode.value = normalized.topMode;
+    fields.refreshRate.value = String(normalized.refreshRate);
   }
 
   function collectSettings() {
@@ -82,6 +88,7 @@
       brightnessStep: fields.brightnessStep.value,
       timerStep: fields.timerStep.value,
       topMode: fields.topMode.value,
+      refreshRate: fields.refreshRate.value,
     });
   }
 
@@ -93,43 +100,57 @@
     websocket.send(JSON.stringify(payload));
   }
 
+  function getTargetContexts() {
+    const contexts = [];
+    if (uuid) contexts.push(uuid);
+    if (actionContext && actionContext !== uuid) contexts.push(actionContext);
+    return contexts;
+  }
+
   function saveSettings() {
     const settings = collectSettings();
+    const contexts = getTargetContexts();
 
-    if (!actionContext) {
+    if (contexts.length === 0) {
       console.log('[Redline PI] local save', settings);
       setStatus('Local preview only');
       return;
     }
 
-    send({
-      event: 'setSettings',
-      context: actionContext,
-      payload: settings,
-    });
+    for (const context of contexts) {
+      send({
+        event: 'setSettings',
+        context,
+        payload: settings,
+      });
+    }
 
     if (actionInfo?.action) {
-      send({
-        event: 'sendToPlugin',
-        action: actionInfo.action,
-        context: actionContext,
-        payload: {
-          type: 'saveSettings',
-          settings,
-        },
-      });
+      for (const context of contexts) {
+        send({
+          event: 'sendToPlugin',
+          action: actionInfo.action,
+          context,
+          payload: {
+            type: 'saveSettings',
+            settings,
+          },
+        });
+      }
     }
 
     setStatus('Settings saved');
   }
 
   function requestSettings() {
-    if (!actionContext) return;
+    const contexts = getTargetContexts();
 
-    send({
-      event: 'getSettings',
-      context: actionContext,
-    });
+    for (const context of contexts) {
+      send({
+        event: 'getSettings',
+        context,
+      });
+    }
   }
 
   window.connectElgatoStreamDeckSocket = function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, inActionInfo) {
@@ -167,12 +188,12 @@
         return;
       }
 
-      if (message.event === 'didReceiveSettings' && message.context === actionContext) {
+      if (message.event === 'didReceiveSettings' && getTargetContexts().includes(message.context)) {
         applySettings(message.payload?.settings || {});
         setStatus('Settings loaded');
       }
 
-      if (message.event === 'sendToPropertyInspector' && message.context === actionContext) {
+      if (message.event === 'sendToPropertyInspector' && getTargetContexts().includes(message.context)) {
         if (message.payload?.settings) {
           applySettings(message.payload.settings);
           setStatus('Settings synced');
