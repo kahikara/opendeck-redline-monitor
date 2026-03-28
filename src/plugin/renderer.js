@@ -58,8 +58,9 @@ function generateFooterButtonImage(icon, title, line1, line2, footer = '') {
 function generateDialImage(icon, title, valueText, percent = -1, barColor = 'rgb(74, 222, 128)') {
   const safeTitle = String(title || '');
   const safeValue = String(valueText || '');
+  const safeLabel = `${String(icon || '').trim()} ${safeTitle}`.trim();
 
-  const titleSize = getAdaptiveFontSize(safeTitle, 18, 14, 10, 1);
+  const labelSize = getAdaptiveFontSize(safeLabel, 18, 13, 9, 1);
   const valueSize = getAdaptiveFontSize(safeValue, 40, 24, 4, 2);
 
   let barHtml = '';
@@ -72,8 +73,7 @@ function generateDialImage(icon, title, valueText, percent = -1, barColor = 'rgb
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
     <rect width="144" height="144" fill="#18181b"/>
-    <text x="60" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="21" text-anchor="end">${escapeXml(icon)}</text>
-    <text x="64" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
+    <text x="72" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="${labelSize}" font-weight="bold" text-anchor="middle">${escapeXml(safeLabel)}</text>
     <text x="72" y="86" fill="#ffffff" font-family="sans-serif" font-size="${valueSize}" font-weight="bold" text-anchor="middle">${escapeXml(safeValue)}</text>
     ${barHtml}
   </svg>`;
