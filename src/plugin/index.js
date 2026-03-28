@@ -588,7 +588,7 @@ async function handleMessage(data) {
     if (event === 'dialRotate') {
       const ticks = message.payload?.ticks || 0;
       const resolvedAction = getResolvedAction(context, action);
-      const settings = getPluginWideSettings();
+      const settings = getSettingsForContext(context);
 
       if (resolvedAction === ACTIONS.audio) {
         await adjustVolume(ticks, settings.volumeStep);
