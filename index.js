@@ -65,6 +65,7 @@ const activeTimers = Object.create(null);
 const lastSentImages = Object.create(null);
 const transientImageTimers = Object.create(null);
 const contextSettings = Object.create(null);
+const actionSettings = Object.create(null);
 const pingStates = Object.create(null);
 
 let pollingInterval = null;
@@ -174,12 +175,31 @@ function normalizeSettings(settings = {}) {
   return normalized;
 }
 
-function storeSettingsForContext(context, settings) {
-  contextSettings[context] = normalizeSettings(settings);
+function storeSettingsForContext(context, settings, action = '') {
+  const normalized = normalizeSettings(settings);
+
+  if (context) {
+    contextSettings[context] = normalized;
+  }
+
+  const resolvedAction = action || activeContexts[context]?.action || '';
+  if (resolvedAction) {
+    actionSettings[resolvedAction] = normalized;
+  }
 }
 
-function getSettingsForContext(context) {
-  return normalizeSettings(contextSettings[context] || {});
+function getSettingsForContext(context, action = '') {
+  const resolvedAction = action || activeContexts[context]?.action || '';
+
+  if (context && contextSettings[context]) {
+    return normalizeSettings(contextSettings[context]);
+  }
+
+  if (resolvedAction && actionSettings[resolvedAction]) {
+    return normalizeSettings(actionSettings[resolvedAction]);
+  }
+
+  return normalizeSettings({});
 }
 
 function getPingState(context) {
@@ -196,71 +216,6 @@ function getPingState(context) {
 
 function getResolvedAction(context, fallbackAction = '') {
   return activeContexts[context]?.action || fallbackAction || '';
-}
-
-function isEncoderAction(action) {
-  return action === ACTIONS.audio || action === ACTIONS.timer || action === ACTIONS.monbright;
-}
-
-function ensureContextRegistered(context, action, controller = '') {
-  if (!context || !action) return '';
-
-  const isEncoder = controller === 'Encoder' || isEncoderAction(action);
-
-  if (!activeContexts[context]) {
-    activeContexts[context] = {
-      action,
-      isEncoder,
-    };
-  } else {
-    activeContexts[context].action = activeContexts[context].action || action;
-    if (isEncoder) {
-      activeContexts[context].isEncoder = true;
-    }
-  }
-
-  if (action === ACTIONS.timer && !activeTimers[context]) {
-    activeTimers[context] = { total: 0, remaining: 0, state: 'stopped' };
-  }
-
-  return activeContexts[context].action;
-}
-
-function scheduleImmediateRender(context, action) {
-  if (!context || !action) return;
-
-  if (action === ACTIONS.audio) {
-    sendUpdateIfChanged(context, generateDialImage('🔊', 'VOLUME', '...', 0, 'rgb(74, 222, 128)'));
-    void updateAudioImmediately(context);
-    return;
-  }
-
-  if (action === ACTIONS.timer) {
-    if (!activeTimers[context]) {
-      activeTimers[context] = { total: 0, remaining: 0, state: 'stopped' };
-    }
-    updateTimerUI(context);
-    return;
-  }
-
-  if (action === ACTIONS.monbright) {
-    sendUpdateIfChanged(context, generateDialImage('☀️', 'MONITOR', '...', 50, 'rgb(250, 204, 21)'));
-    void refreshMonitorBrightness(false).then(() => {
-      if (activeContexts[context]) {
-        updateBrightnessUI(context);
-      }
-    });
-    return;
-  }
-
-  if (action === ACTIONS.disk) {
-    updateDiskUI(context);
-    void refreshDiskSummary().then(() => {
-      if (activeContexts[context]) {
-        updateDiskUI(context);
-      }
-    });
-  }
 }
 
 function escapeXml(value = '') {
@@ -395,6 +350,7 @@ function isExcludedTopProcess(name) {
     'sh',
     'grep',
     'cat',
+    'ps',
     'top',
     'pipewire',
     'wireplumber',
@@ -906,7 +862,7 @@ function updateDiskUI(context) {
   const diskSummary = getDiskSummary(false);
 
   if (!diskSummary.available) {
-    sendUpdateIfChanged(context, generateButtonImage('🖴', 'DISKS', '...', 'LADEN...', -1));
+    sendUpdateIfChanged(context, generateButtonImage('🖴', 'DISKS', '...', 'Loading...', -1));
     return;
   }
 
@@ -1141,7 +1097,7 @@ async function updateAudioImmediately(context) {
 }
 
 async function updatePingImmediately(context) {
-  const settings = getSettingsForContext(context);
+  const settings = getSettingsForContext(context, ACTIONS.ping);
   const target = settings.pingHost || DEFAULT_SETTINGS.pingHost;
   const targetLabel = target.length > 12 ? `${target.slice(0, 11)}…` : target;
   const state = getPingState(context);
@@ -1247,22 +1203,51 @@ ws.on('message', async (data) => {
   const { event, action, context } = message;
 
   try {
-    const resolvedActionFromContext = ensureContextRegistered(context, action, message.payload?.controller);
+    if (event === 'willAppear') {
+      activeContexts[context] = {
+        action,
+        isEncoder: message.payload?.controller === 'Encoder',
+      };
 
-    if (Object.keys(activeContexts).length > 0) {
+      storeSettingsForContext(context, message.payload?.settings || {}, action);
+
+      if (action === ACTIONS.timer && !activeTimers[context]) {
+        activeTimers[context] = { total: 0, remaining: 0, state: 'stopped' };
+      }
+
+      if (action === ACTIONS.monbright) {
+        sendUpdateIfChanged(context, generateDialImage('☀️', 'MONITOR', '...', 50, 'rgb(250, 204, 21)'));
+        await refreshMonitorBrightness(true);
+        updateBrightnessUI(context);
+      }
+
+      if (action === ACTIONS.audio) {
+        sendUpdateIfChanged(context, generateDialImage('🔊', 'VOLUME', '...', 0, 'rgb(74, 222, 128)'));
+        await updateAudioImmediately(context);
+      }
+
+      if (action === ACTIONS.timer) {
+        updateTimerUI(context);
+      }
+
+      if (action === ACTIONS.disk) {
+        sendUpdateIfChanged(context, generateButtonImage('🖴', 'DISKS', '...', 'Loading...', -1));
+        updateDiskUI(context);
+        void refreshDiskSummary().then(() => {
+          if (activeContexts[context]) {
+            updateDiskUI(context);
+          }
+        });
+      }
+
       if (!pollingInterval) startPolling();
       if (!timerInterval) startTimerLoop();
-    }
-    if (event === 'willAppear') {
-      const resolvedAction = ensureContextRegistered(context, action, message.payload?.controller);
-      storeSettingsForContext(context, message.payload?.settings || {});
-      scheduleImmediateRender(context, resolvedAction);
       return;
     }
 
     if (event === 'didReceiveSettings') {
-      const resolvedAction = ensureContextRegistered(context, getResolvedAction(context, action), message.payload?.controller);
-      storeSettingsForContext(context, message.payload?.settings || {});
+      const resolvedAction = getResolvedAction(context, action);
+      storeSettingsForContext(context, message.payload?.settings || {}, resolvedAction);
       delete lastSentImages[context];
 
       if (resolvedAction === ACTIONS.audio) {
@@ -1282,8 +1267,8 @@ ws.on('message', async (data) => {
 
     if (event === 'sendToPlugin') {
       if (message.payload?.type === 'saveSettings') {
-        const resolvedAction = ensureContextRegistered(context, getResolvedAction(context, action), message.payload?.controller);
-        storeSettingsForContext(context, message.payload?.settings || {});
+        const resolvedAction = getResolvedAction(context, action);
+        storeSettingsForContext(context, message.payload?.settings || {}, resolvedAction);
         delete lastSentImages[context];
 
         if (resolvedAction === ACTIONS.audio) {
@@ -1317,9 +1302,9 @@ ws.on('message', async (data) => {
     }
 
     if (event === 'dialRotate') {
-      const resolvedAction = ensureContextRegistered(context, getResolvedAction(context, action), message.payload?.controller);
       const ticks = message.payload?.ticks || 0;
-      const settings = getSettingsForContext(context);
+      const resolvedAction = getResolvedAction(context, action);
+      const settings = getSettingsForContext(context, resolvedAction);
 
       if (resolvedAction === ACTIONS.audio) {
         await adjustVolume(ticks, settings.volumeStep);
@@ -1335,7 +1320,7 @@ ws.on('message', async (data) => {
         }
       }
 
-      if (action === ACTIONS.monbright) {
+      if (resolvedAction === ACTIONS.monbright) {
         await setMonitorBrightness(monitorBrightness + (ticks * settings.brightnessStep));
         updateBrightnessUI(context);
       }
@@ -1344,7 +1329,7 @@ ws.on('message', async (data) => {
     }
 
     if (event === 'dialDown' || event === 'keyDown') {
-      const resolvedAction = ensureContextRegistered(context, getResolvedAction(context, action), message.payload?.controller);
+      const resolvedAction = getResolvedAction(context, action);
 
       if (!activeContexts[context]?.isEncoder) {
         if (resolvedAction === ACTIONS.cpu || resolvedAction === ACTIONS.gpu) {
@@ -1494,7 +1479,7 @@ function startPolling() {
 
       for (const context of Object.keys(activeContexts)) {
         const { action } = activeContexts[context];
-        const settings = getSettingsForContext(context);
+        const settings = getSettingsForContext(context, action);
 
         if (transientImageTimers[context]) {
           continue;
@@ -1569,7 +1554,7 @@ function startPolling() {
           }
         } else if (action === ACTIONS.disk) {
           if (!diskSummary.available) {
-            image = generateButtonImage('🖴', 'DISKS', '...', 'LADEN...', -1);
+            image = generateButtonImage('🖴', 'DISKS', '...', 'Loading...', -1);
           } else {
             image = generateButtonImage('🖴', 'DISKS', `${Math.round(diskSummary.percent)}%`, `${Math.round(diskSummary.freeGB)} GB free`, diskSummary.percent);
           }
