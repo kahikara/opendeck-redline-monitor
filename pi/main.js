@@ -100,6 +100,23 @@
     websocket.send(JSON.stringify(payload));
   }
 
+  function extractIncomingSettings(payload = {}) {
+    if (!payload || typeof payload !== 'object') {
+      return {};
+    }
+
+    if (payload.settings && typeof payload.settings === 'object') {
+      return payload.settings;
+    }
+
+    const knownKeys = ['pingHost', 'networkInterface', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate'];
+    if (knownKeys.some((key) => Object.prototype.hasOwnProperty.call(payload, key))) {
+      return payload;
+    }
+
+    return {};
+  }
+
   function saveSettings() {
     const settings = collectSettings();
 
@@ -151,7 +168,7 @@
 
     actionContext = actionInfo?.context || null;
 
-    applySettings(actionInfo?.payload?.settings || {});
+    applySettings(extractIncomingSettings(actionInfo?.payload || {}));
     websocket = new WebSocket(`ws://127.0.0.1:${inPort}`);
 
     websocket.addEventListener('open', () => {
@@ -174,14 +191,16 @@
         return;
       }
 
+      const incomingSettings = extractIncomingSettings(message.payload);
+
       if (message.event === 'didReceiveSettings' && message.context === actionContext) {
-        applySettings(message.payload?.settings || {});
+        applySettings(incomingSettings);
         setStatus('Settings loaded');
       }
 
       if (message.event === 'sendToPropertyInspector' && message.context === actionContext) {
-        if (message.payload?.settings) {
-          applySettings(message.payload.settings);
+        if (Object.keys(incomingSettings).length > 0) {
+          applySettings(incomingSettings);
           setStatus('Settings synced');
         }
       }

@@ -145,7 +145,24 @@ async function openActionTool(action, context) {
   return true;
 }
 
-function restartPollingIfNeeded(force = False) {}
+function extractIncomingSettings(payload = {}) {
+  if (!payload || typeof payload !== 'object') {
+    return {};
+  }
+
+  if (payload.settings && typeof payload.settings === 'object') {
+    return payload.settings;
+  }
+
+  const knownKeys = ['pingHost', 'networkInterface', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate'];
+  if (knownKeys.some((key) => Object.prototype.hasOwnProperty.call(payload, key))) {
+    return payload;
+  }
+
+  return {};
+}
+
+function restartPollingIfNeeded(force = false) {}
 
 function maybeRestartPolling(refreshChanged = false) {
   const desired = clamp(Number.parseInt(getPluginWideSettings().refreshRate, 10) || 3, 1, 10) * 1000;
@@ -357,8 +374,8 @@ async function pollOnce() {
         } else {
           const download = (((netResult.data[0].rx_sec || 0) * 8) / 1000000).toFixed(1);
           const upload = (((netResult.data[0].tx_sec || 0) * 8) / 1000000).toFixed(1);
-          const ifaceLabel = (netResult.iface || 'auto').slice(0, 14);
-          image = generateButtonImage('🌐', 'NET', `↓${download} ↑${upload}`, ifaceLabel, -1);
+          const ifaceLabel = (netResult.iface || 'NET').slice(0, 8).toUpperCase();
+          image = generateButtonImage('🌐', ifaceLabel, `↓${download}`, `↑${upload}`, -1);
         }
       } else if (action === ACTIONS.disk) {
         if (!diskSummary.available) {
@@ -435,7 +452,8 @@ async function handleMessage(data) {
       };
 
       transport.invalidateContext(context);
-      const refreshChanged = storeSettingsForContext(context, message.payload?.settings || {});
+      const incomingSettings = extractIncomingSettings(message.payload);
+      const refreshChanged = storeSettingsForContext(context, incomingSettings);
 
       if (action === ACTIONS.timer) {
         ensureTimer(context);
@@ -470,9 +488,10 @@ async function handleMessage(data) {
 
     if (event === 'didReceiveSettings') {
       const resolvedAction = getResolvedAction(context, action);
+      const incomingSettings = extractIncomingSettings(message.payload);
       const merged = normalizeSettings({
         ...getPluginWideSettings(),
-        ...(message.payload?.settings || {}),
+        ...incomingSettings,
       });
 
       const refreshChanged = storeSettingsForContext(context, merged);
@@ -493,11 +512,13 @@ async function handleMessage(data) {
     }
 
     if (event === 'sendToPlugin') {
-      if (message.payload?.type === 'saveSettings') {
+      const incomingSettings = extractIncomingSettings(message.payload);
+
+      if (message.payload?.type === 'saveSettings' || Object.keys(incomingSettings).length > 0) {
         const resolvedAction = getResolvedAction(context, action);
         const merged = normalizeSettings({
           ...getPluginWideSettings(),
-          ...(message.payload?.settings || {}),
+          ...incomingSettings,
         });
 
         const refreshChanged = storeSettingsForContext(context, merged);
