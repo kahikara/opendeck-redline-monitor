@@ -264,6 +264,16 @@ function startTimerLoop() {
   }, 1000);
 }
 
+async function getCachedNetworkStats(cache, networkInterface = '') {
+  const key = String(networkInterface || '').trim() || '__auto__';
+
+  if (!cache.has(key)) {
+    cache.set(key, getNetworkStats(networkInterface));
+  }
+
+  return cache.get(key);
+}
+
 async function pollOnce() {
   if (state.pollingInProgress || state.shuttingDown) return;
   state.pollingInProgress = true;
@@ -278,6 +288,7 @@ async function pollOnce() {
     let diskData = [];
     let audioData = { available: false, vol: 0, muted: false };
     let procData = state.procCache.data;
+    const networkStatsCache = new Map();
 
     const needsCpu = actionsList.includes(ACTIONS.cpu);
     const needsRam = actionsList.includes(ACTIONS.ram);
@@ -408,7 +419,7 @@ async function pollOnce() {
           image = generateButtonImage('🎞️', 'VRAM', `${Math.round(percent)}%`, `${usedGB} / ${totalGB} GB`, percent);
         }
       } else if (action === ACTIONS.net) {
-        const netResult = await getNetworkStats(settings.networkInterface);
+        const netResult = await getCachedNetworkStats(networkStatsCache, settings.networkInterface);
 
         if (!netResult.available || netResult.data.length === 0) {
           image = unavailableButton('🌐', 'NET', 'NO NET');
