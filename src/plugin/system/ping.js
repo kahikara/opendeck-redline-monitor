@@ -26,7 +26,7 @@ async function getPing(context, host, force = false) {
     pingState.lastPingTime = 0;
   }
 
-  const result = await runCommand(`ping -c 1 -W 2 ${shellEscape(target)}`, 4000);
+  const result = await runCommand(`LC_ALL=C ping -c 1 -W 2 ${shellEscape(target)}`, 4000);
 
   if (result.error || !result.stdout) {
     pingState.failedPings += 1;
@@ -35,10 +35,10 @@ async function getPing(context, host, force = false) {
   }
 
   pingState.failedPings = 0;
-  const match = result.stdout.match(/time=([0-9.]+)/);
+  const match = result.stdout.match(/(?:time|Zeit)=([0-9]+(?:[.,][0-9]+)?)/i);
 
   if (match) {
-    const milliseconds = Number.parseFloat(match[1]);
+    const milliseconds = Number.parseFloat(String(match[1]).replace(',', '.'));
     if (Number.isFinite(milliseconds)) {
       pingState.lastPing = milliseconds > 0 && milliseconds < 1 ? 1 : Math.round(milliseconds);
     }
