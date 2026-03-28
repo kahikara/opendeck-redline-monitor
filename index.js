@@ -48,6 +48,7 @@ const DEFAULT_SETTINGS = Object.freeze({
 
 const POLL_INTERVAL_MS = 2000;
 const TOP_REFRESH_MS = 4000;
+const TOP_HOLD_MS = 12000;
 const NETWORK_CACHE_MS = 10000;
 const BRIGHTNESS_REFRESH_MS = 15000;
 const CPU_POWER_SOURCE_CACHE_MS = 10000;
@@ -83,6 +84,10 @@ let cpuPowerSourceCache = {
 };
 let cpuPowerSampleCache = Object.create(null);
 let procCache = { timestamp: 0, data: { list: [] } };
+let topProcessCache = {
+  grouped: { name: '', cpu: 0, timestamp: 0 },
+  raw: { name: '', cpu: 0, timestamp: 0 },
+};
 let networkCache = { timestamp: 0, iface: null };
 let diskCache = {
   timestamp: 0,
@@ -333,6 +338,9 @@ function isExcludedTopProcess(name) {
 }
 
 function getTopProcessSummary(procData, mode = 'grouped') {
+  const cacheKey = mode === 'raw' ? 'raw' : 'grouped';
+  const cached = topProcessCache[cacheKey];
+  const now = Date.now();
   const list = Array.isArray(procData?.list) ? procData.list : [];
   const filtered = [];
 
@@ -341,7 +349,7 @@ function getTopProcessSummary(procData, mode = 'grouped') {
     const cpu = Number(process.cpu || 0);
 
     if (!rawName) continue;
-    if (!Number.isFinite(cpu) || cpu <= 0.2) continue;
+    if (!Number.isFinite(cpu) || cpu <= 0.15) continue;
     if (isExcludedTopProcess(rawName)) continue;
 
     filtered.push({
@@ -351,40 +359,83 @@ function getTopProcessSummary(procData, mode = 'grouped') {
     });
   }
 
-  if (filtered.length === 0) return null;
+  const useCached = () => {
+    if (cached && cached.name && (now - cached.timestamp) <= TOP_HOLD_MS) {
+      return {
+        name: cached.name,
+        cpu: cached.cpu,
+      };
+    }
+
+    return null;
+  };
+
+  if (filtered.length === 0) {
+    return useCached();
+  }
+
+  let result = null;
 
   if (mode === 'raw') {
     const best = filtered.sort((a, b) => b.cpu - a.cpu)[0];
-    if (!best || best.cpu < 1) return null;
 
-    return {
-      name: best.label,
-      cpu: clamp(Math.round(best.cpu > 100 ? best.cpu / coreCount : best.cpu), 0, 100),
-    };
-  }
+    if (best) {
+      const normalizedCpu = clamp(
+        Math.max(1, Math.round(best.cpu > 100 ? best.cpu / coreCount : best.cpu)),
+        0,
+        100
+      );
 
-  const grouped = new Map();
+      if (normalizedCpu >= 1) {
+        result = {
+          name: best.label,
+          cpu: normalizedCpu,
+        };
+      }
+    }
+  } else {
+    const grouped = new Map();
 
-  for (const process of filtered) {
-    grouped.set(process.label, (grouped.get(process.label) || 0) + process.cpu);
-  }
+    for (const process of filtered) {
+      grouped.set(process.label, (grouped.get(process.label) || 0) + process.cpu);
+    }
 
-  let bestName = '';
-  let bestCpu = 0;
+    let bestName = '';
+    let bestCpu = 0;
 
-  for (const [name, cpu] of grouped.entries()) {
-    if (cpu > bestCpu) {
-      bestName = name;
-      bestCpu = cpu;
+    for (const [name, cpu] of grouped.entries()) {
+      if (cpu > bestCpu) {
+        bestName = name;
+        bestCpu = cpu;
+      }
+    }
+
+    if (bestName) {
+      const normalizedCpu = clamp(
+        Math.max(1, Math.round(bestCpu > 100 ? bestCpu / coreCount : bestCpu)),
+        0,
+        100
+      );
+
+      if (normalizedCpu >= 1) {
+        result = {
+          name: bestName,
+          cpu: normalizedCpu,
+        };
+      }
     }
   }
 
-  if (bestCpu < 1) return null;
+  if (result) {
+    topProcessCache[cacheKey] = {
+      name: result.name,
+      cpu: result.cpu,
+      timestamp: now,
+    };
+    return result;
+  }
 
-  return {
-    name: bestName,
-    cpu: clamp(Math.round(bestCpu > 100 ? bestCpu / coreCount : bestCpu), 0, 100),
-  };
+  return useCached();
 }
 
 function generateButtonImage(icon, title, line1, line2, percent = -1) {
