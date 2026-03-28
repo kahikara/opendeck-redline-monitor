@@ -41,7 +41,7 @@ function generateFooterButtonImage(icon, title, line1, line2, footer = '') {
   const titleSize = getAdaptiveFontSize(safeTitle, 19, 15, 8, 1);
   const line1Size = getAdaptiveFontSize(safeLine1, 30, 20, 6, 2);
   const line2Size = getAdaptiveFontSize(safeLine2, 24, 16, 8, 1);
-  const footerSize = getAdaptiveFontSize(safeFooter, 13, 10, 12, 1);
+  const footerSize = getAdaptiveFontSize(safeFooter, 15, 11, 12, 1);
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
     <rect width="144" height="144" fill="#18181b"/>
@@ -49,7 +49,7 @@ function generateFooterButtonImage(icon, title, line1, line2, footer = '') {
     <text x="64" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
     <text x="72" y="70" fill="#ffffff" font-family="sans-serif" font-size="${line1Size}" font-weight="bold" text-anchor="middle">${escapeXml(safeLine1)}</text>
     <text x="72" y="96" fill="#a1a1aa" font-family="sans-serif" font-size="${line2Size}" text-anchor="middle">${escapeXml(safeLine2)}</text>
-    <text x="72" y="128" fill="#71717a" font-family="sans-serif" font-size="${footerSize}" text-anchor="middle">${escapeXml(safeFooter)}</text>
+    <text x="72" y="127" fill="#71717a" font-family="sans-serif" font-size="${footerSize}" text-anchor="middle">${escapeXml(safeFooter)}</text>
   </svg>`;
 
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
