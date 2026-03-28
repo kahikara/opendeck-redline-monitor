@@ -310,6 +310,7 @@ copy_optional LICENSE "$STAGE_DIR/"
 copy_optional icons "$STAGE_DIR/"
 copy_optional pi "$STAGE_DIR/"
 copy_optional assets "$STAGE_DIR/"
+copy_optional src "$STAGE_DIR/"
 copy_optional node_modules "$STAGE_DIR/"
 
 chmod +x "$STAGE_DIR/start.sh"
