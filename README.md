@@ -1,6 +1,6 @@
 # Redline Monitor
 
-A high performance System Information dashboard for Stream Deck on Linux. Features real time CPU and GPU monitoring with an AMD focus, intelligent disk aggregation, encoder based system controls, and optional custom on press commands.
+A high performance System Information dashboard for Stream Deck on Linux. Features real time CPU and GPU monitoring for AMD, Intel, and NVIDIA systems, intelligent disk aggregation, encoder based system controls, and optional custom on press commands.
 
 ![Redline Monitor Dashboard](assets/screenshot.png)
 
@@ -23,7 +23,7 @@ Redline Monitor includes actions for:
 
 Additional highlights:
 
-* Linux focused with a strong AMD orientation
+* Linux focused with support for AMD, Intel, and NVIDIA hardware
 * Compact monitoring cards for keys and encoders
 * Per button and per encoder press custom command support
 * Intelligent disk aggregation
@@ -33,8 +33,8 @@ Additional highlights:
 
 ## Action details
 
-* **CPU** shows load, temperature, and CPU power. Press opens Plasma System Monitor by default, or runs your custom command.
-* **GPU** shows usage, power, and temperature. Press opens LACT by default, or runs your custom command.
+* **CPU** shows load, temperature, and CPU power. Existing AMD behavior is preserved, and Intel package power is supported through Intel RAPL. Press opens Plasma System Monitor by default, or runs your custom command.
+* **GPU** shows usage, power, and temperature. Existing AMD behavior is preserved, and NVIDIA GPUs are supported through `nvidia-smi`. Press opens LACT by default, or runs your custom command.
 * **VRAM** shows used and total GPU memory.
 * **RAM** shows active memory usage.
 * **Network** shows download and upload throughput.
@@ -70,10 +70,15 @@ Depending on the action you use, these tools may be needed:
 * `ddcutil` for monitor brightness control
 * `lm-sensors` for temperature readings
 * `zenergy` for AMD Ryzen package power readings
+* `nvidia-smi` for NVIDIA GPU metrics
 
 If CPU power reads as `0W` on Ryzen, install `zenergy`.
 
 Arch Linux: `yay -S zenergy-dkms-git`
+
+Intel CPU package power is supported through Intel RAPL when available.
+
+For NVIDIA GPU metrics, make sure `nvidia-smi` is available.
 
 For monitor brightness control through DDC or CI, add your user to the `i2c` group:
 
