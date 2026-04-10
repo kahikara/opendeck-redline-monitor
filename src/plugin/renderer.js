@@ -90,7 +90,7 @@ function generatePageDialImage(icon, title, valueText, pageIndex, pageCount) {
 
 function generateBlankButtonImage() {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
-    <rect width="144" height="144" fill="#18181b"/>
+    <rect width="144" height="144" fill="rgba(0,0,0,0)"/>
   </svg>`;
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }

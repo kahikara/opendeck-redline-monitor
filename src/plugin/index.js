@@ -472,7 +472,7 @@ async function pollOnce() {
         continue;
       }
 
-      if (settings.pageSlot !== state.activePageIndex + 1) {
+      if (!state.activeContexts[context]?.isEncoder && settings.pageSlot !== state.activePageIndex + 1) {
         transport.sendUpdateIfChanged(context, generateBlankButtonImage());
         continue;
       }
