@@ -141,6 +141,21 @@
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
+    },
+    {
+      "Icon": "icons/actionDefaultImage",
+      "Name": "Page Dial",
+      "UUID": "com.kahikara.opendeck-redline.page",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "States": [
+        {
+          "Image": "icons/actionDefaultImage"
+        }
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     }
   ],
   "Author": "Ming",

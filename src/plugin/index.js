@@ -5,7 +5,7 @@ const state = require('./state');
 const { ACTIONS } = require('./constants');
 const { log, warn, clamp, runCommand, commandExists } = require('./utils');
 const { storeSettingsForContext, getSettingsForContext, getPluginWideSettings, getResolvedAction } = require('./settings');
-const { generateButtonImage, generateDialImage, generateFooterButtonImage, unavailableButton, unavailableDial } = require('./renderer');
+const { generateButtonImage, generateCenteredHeaderButtonImage, generateDialImage, generateFooterButtonImage, generatePageDialImage, generateBlankButtonImage, unavailableButton, unavailableDial } = require('./renderer');
 const transport = require('./transport');
 
 const { getCpuPower } = require('./system/cpu');
@@ -227,7 +227,7 @@ async function runCustomPressCommand(context, settings, resolvedAction) {
 }
 
 function extractIncomingSettings(payload = {}) {
-  const knownKeys = ['pingHost', 'networkInterface', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate', 'pressAction', 'pressCommand'];
+  const knownKeys = ['pingHost', 'networkInterface', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate', 'pressAction', 'pressCommand', 'pageSlot', 'pageCount', 'pageName1', 'pageName2', 'pageName3', 'pageName4'];
 
   function visit(value, depth = 0) {
     if (!value || typeof value !== 'object' || depth > 6) {
@@ -361,6 +361,9 @@ async function pollOnce() {
 
   try {
     const actionsList = Object.values(state.activeContexts).map((entry) => entry.action);
+    const pluginWide = getPluginWideSettings();
+    const pageCount = Math.max(1, Math.min(4, pluginWide.pageCount || 1));
+    state.activePageIndex = Math.max(0, Math.min(state.activePageIndex, pageCount - 1));
     if (actionsList.length === 0) return;
 
     let cpuData = {};
@@ -440,6 +443,17 @@ async function pollOnce() {
         continue;
       }
 
+      if (action === ACTIONS.page) {
+        const pageName = pluginWide[`pageName${state.activePageIndex + 1}`] || `Page ${state.activePageIndex + 1}`;
+        transport.sendUpdateIfChanged(context, generatePageDialImage('📑', 'PAGE', pageName.toUpperCase(), state.activePageIndex, pageCount));
+        continue;
+      }
+
+      if (settings.pageSlot !== state.activePageIndex + 1) {
+        transport.sendUpdateIfChanged(context, generateBlankButtonImage());
+        continue;
+      }
+
       if (action === ACTIONS.audio) {
         if (!audioData.available) {
           transport.sendUpdateIfChanged(context, unavailableDial('🔊', 'VOLUME', 'NO AUDIO'));
@@ -488,7 +502,9 @@ async function pollOnce() {
           image = unavailableButton('🧠', 'RAM', 'NO DATA');
         } else {
           const percent = (activeMemory / totalMemory) * 100;
-          image = generateButtonImage('🧠', 'RAM', `${Math.round(percent)}%`, `${(activeMemory / (1024 ** 3)).toFixed(1)} GB`, percent);
+          const usedGB = (activeMemory / (1024 ** 3)).toFixed(1);
+          const totalGB = (totalMemory / (1024 ** 3)).toFixed(0);
+          image = generateButtonImage('🧠', 'RAM', `${Math.round(percent)}%`, `${usedGB} / ${totalGB} GB`, percent);
         }
       } else if (action === ACTIONS.vram) {
         if (!gpuStats?.available || !gpuStats.vramTotal) {
@@ -514,7 +530,7 @@ async function pollOnce() {
         if (!diskSummary.available) {
           image = generateButtonImage('🖴', 'DISKS', '...', 'Loading...', -1);
         } else {
-          image = generateButtonImage('🖴', 'DISKS', `${Math.round(diskSummary.percent)}%`, `${Math.round(diskSummary.freeGB)} GB free`, diskSummary.percent);
+          image = generateCenteredHeaderButtonImage('🖴', 'DISKS', `${Math.round(diskSummary.percent)}%`, `${Math.round(diskSummary.freeGB)} GB free`, diskSummary.percent);
         }
       } else if (action === ACTIONS.ping) {
         const pingState = getPingState(context);
@@ -595,6 +611,17 @@ async function handleMessage(data) {
       if (action === ACTIONS.monbright) {
         await refreshMonitorBrightness(true);
         updateBrightnessUI(context);
+      }
+
+      if (action === ACTIONS.page) {
+        const pageName = pluginWide[`pageName${state.activePageIndex + 1}`] || `Page ${state.activePageIndex + 1}`;
+        transport.sendUpdateIfChanged(context, generatePageDialImage('📑', 'PAGE', pageName.toUpperCase(), state.activePageIndex, pageCount));
+        continue;
+      }
+
+      if (settings.pageSlot !== state.activePageIndex + 1) {
+        transport.sendUpdateIfChanged(context, generateBlankButtonImage());
+        continue;
       }
 
       if (action === ACTIONS.audio) {
@@ -701,6 +728,15 @@ async function handleMessage(data) {
         updateBrightnessUI(context);
       }
 
+      if (resolvedAction === ACTIONS.page) {
+        const pluginWide = getPluginWideSettings();
+        const pageCount = Math.max(1, Math.min(4, pluginWide.pageCount || 1));
+        state.activePageIndex = (state.activePageIndex + ticks) % pageCount;
+        if (state.activePageIndex < 0) state.activePageIndex += pageCount;
+        transport.invalidateAllVisible();
+        await pollOnce();
+      }
+
       return;
     }
 
@@ -748,6 +784,14 @@ async function handleMessage(data) {
       if (resolvedAction === ACTIONS.monbright) {
         await setMonitorBrightness(50);
         updateBrightnessUI(context);
+      }
+
+      if (resolvedAction === ACTIONS.page) {
+        const pluginWide = getPluginWideSettings();
+        const pageCount = Math.max(1, Math.min(4, pluginWide.pageCount || 1));
+        state.activePageIndex = (state.activePageIndex + 1) % pageCount;
+        transport.invalidateAllVisible();
+        await pollOnce();
       }
     }
   } catch (error) {

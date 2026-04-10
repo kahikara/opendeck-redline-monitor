@@ -66,6 +66,17 @@
             </select>
             <p class="hint">Used by the Top action.</p>
           </section>
+
+          <section class="card">
+            <label for="pageSlot">Page slot</label>
+            <select id="pageSlot">
+              <option value="1">Page 1</option>
+              <option value="2">Page 2</option>
+              <option value="3">Page 3</option>
+              <option value="4">Page 4</option>
+            </select>
+            <p class="hint">Controls on which page this action is visible.</p>
+          </section>
         </div>
       </section>
 
@@ -79,6 +90,28 @@
             <option value="10">10 seconds</option>
           </select>
           <p class="hint">Plugin wide polling interval.</p>
+        </section>
+
+        <section class="card sideCard">
+          <label for="pageCount">Page count</label>
+          <select id="pageCount">
+            <option value="1">1 page</option>
+            <option value="2">2 pages</option>
+            <option value="3" selected>3 pages</option>
+            <option value="4">4 pages</option>
+          </select>
+          <p class="hint">Plugin wide page count for the page dial.</p>
+        </section>
+
+        <section class="card sideCard">
+          <label for="pageName1">Page 1 name</label>
+          <input id="pageName1" type="text" placeholder="System">
+          <label for="pageName2">Page 2 name</label>
+          <input id="pageName2" type="text" placeholder="Network">
+          <label for="pageName3">Page 3 name</label>
+          <input id="pageName3" type="text" placeholder="Control">
+          <label for="pageName4">Page 4 name</label>
+          <input id="pageName4" type="text" placeholder="Extra">
         </section>
 
         <section class="card sideCard">

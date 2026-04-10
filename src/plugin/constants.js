@@ -13,6 +13,7 @@ const ACTIONS = Object.freeze({
   audio: `${PLUGIN_PREFIX}.audio`,
   timer: `${PLUGIN_PREFIX}.timer`,
   monbright: `${PLUGIN_PREFIX}.monbright`,
+  page: `${PLUGIN_PREFIX}.page`,
 });
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -25,6 +26,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   refreshRate: 3,
   pressAction: 'default',
   pressCommand: '',
+  pageSlot: 1,
+  pageCount: 3,
+  pageName1: 'System',
+  pageName2: 'Network',
+  pageName3: 'Control',
+  pageName4: 'Extra',
 });
 
 const POLL_INTERVAL_MS = 2000;
