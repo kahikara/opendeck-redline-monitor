@@ -472,11 +472,6 @@ async function pollOnce() {
         continue;
       }
 
-      if (!state.activeContexts[context]?.isEncoder && settings.pageSlot !== state.activePageIndex + 1) {
-        transport.sendUpdateIfChanged(context, generateBlankButtonImage());
-        continue;
-      }
-
       if (action === ACTIONS.audio) {
         if (!audioData.available) {
           transport.sendUpdateIfChanged(context, unavailableDial('🔊', 'VOLUME', 'NO AUDIO'));
