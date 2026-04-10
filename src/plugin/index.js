@@ -473,7 +473,7 @@ async function pollOnce() {
       }
 
       if (settings.pageSlot !== state.activePageIndex + 1) {
-        transport.sendUpdateIfChanged(context, generateHiddenPageButtonImage(settings.pageSlot));
+        transport.sendUpdateIfChanged(context, generateBlankButtonImage());
         continue;
       }
 
