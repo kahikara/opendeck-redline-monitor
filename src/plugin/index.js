@@ -106,6 +106,17 @@ async function updateAudioImmediately(context) {
   transport.sendUpdateIfChanged(context, generateDialImage(icon, 'VOLUME', valueText, audioData.vol, barColor));
 }
 
+function updatePageDialImmediately(context) {
+  const pluginWide = getPluginWideSettings();
+  const pageCount = Math.max(1, Math.min(4, pluginWide.pageCount || 1));
+  state.activePageIndex = Math.max(0, Math.min(state.activePageIndex, pageCount - 1));
+  const pageName = pluginWide[`pageName${state.activePageIndex + 1}`] || `Page ${state.activePageIndex + 1}`;
+  transport.sendUpdateIfChanged(
+    context,
+    generatePageDialImage('📑', 'PAGE', pageName.toUpperCase(), state.activePageIndex, pageCount)
+  );
+}
+
 async function updatePingImmediately(context) {
   const settings = getSettingsForContext(context);
   const target = settings.pingHost || '1.1.1.1';
@@ -606,6 +617,10 @@ async function handleMessage(data) {
         await updateAudioImmediately(context);
       }
 
+      if (action === ACTIONS.page) {
+        updatePageDialImmediately(context);
+      }
+
       if (action === ACTIONS.timer) {
         updateTimerUI(context);
       }
@@ -638,6 +653,8 @@ async function handleMessage(data) {
         await updatePingImmediately(context);
       } else if (resolvedAction === ACTIONS.timer) {
         updateTimerUI(context);
+      } else if (resolvedAction === ACTIONS.page) {
+        updatePageDialImmediately(context);
       }
 
       maybeRestartPolling(refreshChanged);
@@ -660,6 +677,8 @@ async function handleMessage(data) {
           await updatePingImmediately(context);
         } else if (resolvedAction === ACTIONS.timer) {
           updateTimerUI(context);
+        } else if (resolvedAction === ACTIONS.page) {
+          updatePageDialImmediately(context);
         }
 
         maybeRestartPolling(refreshChanged);
@@ -711,6 +730,7 @@ async function handleMessage(data) {
         const pageCount = Math.max(1, Math.min(4, pluginWide.pageCount || 1));
         state.activePageIndex = (state.activePageIndex + ticks) % pageCount;
         if (state.activePageIndex < 0) state.activePageIndex += pageCount;
+        updatePageDialImmediately(context);
         transport.invalidateAllVisible();
         await pollOnce();
       }
@@ -768,6 +788,7 @@ async function handleMessage(data) {
         const pluginWide = getPluginWideSettings();
         const pageCount = Math.max(1, Math.min(4, pluginWide.pageCount || 1));
         state.activePageIndex = (state.activePageIndex + 1) % pageCount;
+        updatePageDialImmediately(context);
         transport.invalidateAllVisible();
         await pollOnce();
       }
