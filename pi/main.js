@@ -11,12 +11,6 @@
     refreshRate: $('refreshRate'),
     pressAction: $('pressAction'),
     pressCommand: $('pressCommand'),
-    pageSlot: $('pageSlot'),
-    pageCount: $('pageCount'),
-    pageName1: $('pageName1'),
-    pageName2: $('pageName2'),
-    pageName3: $('pageName3'),
-    pageName4: $('pageName4'),
   };
 
   const pressCommandWrap = $('pressCommandWrap');
@@ -38,12 +32,6 @@
     refreshRate: 3,
     pressAction: 'default',
     pressCommand: '',
-    pageSlot: 1,
-    pageCount: 3,
-    pageName1: 'System',
-    pageName2: 'Network',
-    pageName3: 'Control',
-    pageName4: 'Extra',
   });
 
   function setStatus(text) {
@@ -94,20 +82,6 @@
       normalized.pressCommand = settings.pressCommand.trim();
     }
 
-    if (settings.pageSlot !== undefined) {
-      normalized.pageSlot = Math.max(1, Math.min(4, Number.parseInt(settings.pageSlot, 10) || DEFAULT_SETTINGS.pageSlot));
-    }
-
-    if (settings.pageCount !== undefined) {
-      normalized.pageCount = Math.max(1, Math.min(4, Number.parseInt(settings.pageCount, 10) || DEFAULT_SETTINGS.pageCount));
-    }
-
-    for (const key of ['pageName1', 'pageName2', 'pageName3', 'pageName4']) {
-      if (typeof settings[key] === 'string' && settings[key].trim()) {
-        normalized[key] = settings[key].trim().slice(0, 16);
-      }
-    }
-
     return normalized;
   }
 
@@ -123,12 +97,6 @@
     fields.refreshRate.value = String(normalized.refreshRate);
     fields.pressAction.value = normalized.pressAction;
     fields.pressCommand.value = normalized.pressCommand;
-    fields.pageSlot.value = String(normalized.pageSlot);
-    fields.pageCount.value = String(normalized.pageCount);
-    fields.pageName1.value = normalized.pageName1;
-    fields.pageName2.value = normalized.pageName2;
-    fields.pageName3.value = normalized.pageName3;
-    fields.pageName4.value = normalized.pageName4;
 
     updatePressCommandVisibility();
   }
@@ -144,12 +112,6 @@
       refreshRate: fields.refreshRate.value,
       pressAction: fields.pressAction.value,
       pressCommand: fields.pressCommand.value,
-      pageSlot: fields.pageSlot.value,
-      pageCount: fields.pageCount.value,
-      pageName1: fields.pageName1.value,
-      pageName2: fields.pageName2.value,
-      pageName3: fields.pageName3.value,
-      pageName4: fields.pageName4.value,
     });
   }
 
@@ -162,7 +124,7 @@
   }
 
   function extractIncomingSettings(payload = {}) {
-    const knownKeys = ['pingHost', 'networkInterface', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate', 'pressAction', 'pressCommand', 'pageSlot', 'pageCount', 'pageName1', 'pageName2', 'pageName3', 'pageName4'];
+    const knownKeys = ['pingHost', 'networkInterface', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate', 'pressAction', 'pressCommand'];
 
     function visit(value, depth = 0) {
       if (!value || typeof value !== 'object' || depth > 6) {

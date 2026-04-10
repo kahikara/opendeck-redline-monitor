@@ -20,7 +20,6 @@ module.exports = {
   monitorBrightness: 50,
   monitorBrightnessAvailable: false,
   lastBrightnessSync: 0,
-  activePageIndex: 0,
 
   amdgpuDirCache: null,
   cpuPowerSourceCache: {

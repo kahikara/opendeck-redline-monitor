@@ -5,7 +5,7 @@ const state = require('./state');
 const { ACTIONS } = require('./constants');
 const { log, warn, clamp, runCommand, commandExists } = require('./utils');
 const { storeSettingsForContext, getSettingsForContext, getPluginWideSettings, getResolvedAction } = require('./settings');
-const { generateButtonImage, generateCenteredHeaderButtonImage, generateDialImage, generateFooterButtonImage, generatePageDialImage, generateBlankButtonImage, generateHiddenPageButtonImage, unavailableButton, unavailableDial } = require('./renderer');
+const { generateButtonImage, generateCenteredHeaderButtonImage, generateDialImage, generateFooterButtonImage, unavailableButton, unavailableDial } = require('./renderer');
 const transport = require('./transport');
 
 const { getCpuPower } = require('./system/cpu');
@@ -106,16 +106,6 @@ async function updateAudioImmediately(context) {
   transport.sendUpdateIfChanged(context, generateDialImage(icon, 'VOLUME', valueText, audioData.vol, barColor));
 }
 
-function updatePageDialImmediately(context) {
-  const pluginWide = getPluginWideSettings();
-  const pageCount = Math.max(1, Math.min(4, pluginWide.pageCount || 1));
-  state.activePageIndex = Math.max(0, Math.min(state.activePageIndex, pageCount - 1));
-  const pageName = pluginWide[`pageName${state.activePageIndex + 1}`] || `Page ${state.activePageIndex + 1}`;
-  transport.sendUpdateIfChanged(
-    context,
-    generatePageDialImage('📑', 'PAGE', pageName.toUpperCase(), state.activePageIndex, pageCount)
-  );
-}
 
 async function updatePingImmediately(context) {
   const settings = getSettingsForContext(context);
@@ -168,17 +158,6 @@ function createPressFeedbackImage(context, icon, title, valueText, detailText, c
   return generateButtonImage(icon, title, valueText, detailText, -1);
 }
 
-function ensureContextPageSlot(context, action) {
-  if (!context || action === ACTIONS.page) return;
-
-  const current = state.contextSettings[context] || {};
-  if (Number.isFinite(Number.parseInt(current.pageSlot, 10))) return;
-
-  storeSettingsForContext(context, {
-    ...current,
-    pageSlot: state.activePageIndex + 1,
-  });
-}
 
 async function refreshActionAfterPress(context, resolvedAction) {
   if (!state.activeContexts[context]) return;
@@ -250,7 +229,7 @@ async function runCustomPressCommand(context, settings, resolvedAction) {
 }
 
 function extractIncomingSettings(payload = {}) {
-  const knownKeys = ['pingHost', 'networkInterface', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate', 'pressAction', 'pressCommand', 'pageSlot', 'pageCount', 'pageName1', 'pageName2', 'pageName3', 'pageName4'];
+  const knownKeys = ['pingHost', 'networkInterface', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate', 'pressAction', 'pressCommand', ];
 
   function visit(value, depth = 0) {
     if (!value || typeof value !== 'object' || depth > 6) {
@@ -384,9 +363,6 @@ async function pollOnce() {
 
   try {
     const actionsList = Object.values(state.activeContexts).map((entry) => entry.action);
-    const pluginWide = getPluginWideSettings();
-    const pageCount = Math.max(1, Math.min(4, pluginWide.pageCount || 1));
-    state.activePageIndex = Math.max(0, Math.min(state.activePageIndex, pageCount - 1));
     if (actionsList.length === 0) return;
 
     let cpuData = {};
@@ -468,7 +444,7 @@ async function pollOnce() {
 
       if (action === ACTIONS.page) {
         const pageName = pluginWide[`pageName${state.activePageIndex + 1}`] || `Page ${state.activePageIndex + 1}`;
-        transport.sendUpdateIfChanged(context, generatePageDialImage('📑', 'PAGE', pageName.toUpperCase(), state.activePageIndex, pageCount));
+        transport.sendUpdateIfChanged(context('📑', 'PAGE', pageName.toUpperCase(), state.activePageIndex, pageCount));
         continue;
       }
 
@@ -621,7 +597,6 @@ async function handleMessage(data) {
       transport.invalidateContext(context);
       const incomingSettings = extractIncomingSettings(message.payload);
       const refreshChanged = storeSettingsForContext(context, incomingSettings);
-      ensureContextPageSlot(context, action);
 
       if (action === ACTIONS.timer) {
         ensureTimer(context);
@@ -634,10 +609,6 @@ async function handleMessage(data) {
 
       if (action === ACTIONS.audio) {
         await updateAudioImmediately(context);
-      }
-
-      if (action === ACTIONS.page) {
-        updatePageDialImmediately(context);
       }
 
       if (action === ACTIONS.timer) {
@@ -744,16 +715,6 @@ async function handleMessage(data) {
         updateBrightnessUI(context);
       }
 
-      if (resolvedAction === ACTIONS.page) {
-        const pluginWide = getPluginWideSettings();
-        const pageCount = Math.max(1, Math.min(4, pluginWide.pageCount || 1));
-        state.activePageIndex = (state.activePageIndex + ticks) % pageCount;
-        if (state.activePageIndex < 0) state.activePageIndex += pageCount;
-        updatePageDialImmediately(context);
-        transport.invalidateAllVisible();
-        await pollOnce();
-      }
-
       return;
     }
 
@@ -801,15 +762,6 @@ async function handleMessage(data) {
       if (resolvedAction === ACTIONS.monbright) {
         await setMonitorBrightness(50);
         updateBrightnessUI(context);
-      }
-
-      if (resolvedAction === ACTIONS.page) {
-        const pluginWide = getPluginWideSettings();
-        const pageCount = Math.max(1, Math.min(4, pluginWide.pageCount || 1));
-        state.activePageIndex = (state.activePageIndex + 1) % pageCount;
-        updatePageDialImmediately(context);
-        transport.invalidateAllVisible();
-        await pollOnce();
       }
     }
   } catch (error) {

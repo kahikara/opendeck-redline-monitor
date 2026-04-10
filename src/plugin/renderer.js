@@ -62,49 +62,8 @@ function generateCenteredHeaderButtonImage(icon, title, line1, line2, percent = 
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
-function generatePageDialImage(icon, title, valueText, pageIndex, pageCount) {
-  const safeTitle = String(title || '');
-  const safeValue = String(valueText || '');
-  const safeLabel = `${String(icon || '').trim()} ${safeTitle}`.trim();
 
-  const labelSize = getAdaptiveFontSize(safeLabel, 18, 13, 9, 1);
-  const valueSize = getAdaptiveFontSize(safeValue, 30, 18, 8, 2);
 
-  const dots = Array.from({ length: Math.max(1, Math.min(4, pageCount || 1)) }, (_, index) => {
-    const active = index === pageIndex;
-    const cx = 72 + ((index - ((pageCount - 1) / 2)) * 16);
-    const fill = active ? '#ffffff' : '#52525b';
-    const r = active ? 4.5 : 3;
-    return `<circle cx="${cx}" cy="120" r="${r}" fill="${fill}"/>`;
-  }).join('');
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
-    <rect width="144" height="144" fill="#18181b"/>
-    <text x="72" y="32" fill="#a1a1aa" font-family="sans-serif" font-size="${labelSize}" font-weight="bold" text-anchor="middle">${escapeXml(safeLabel)}</text>
-    <text x="72" y="80" fill="#ffffff" font-family="sans-serif" font-size="${valueSize}" font-weight="bold" text-anchor="middle">${escapeXml(safeValue)}</text>
-    ${dots}
-  </svg>`;
-
-  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-}
-
-function generateBlankButtonImage() {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
-    <rect width="144" height="144" fill="rgba(0,0,0,0)"/>
-  </svg>`;
-  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-}
-
-function generateHiddenPageButtonImage(pageSlot) {
-  const safeSlot = Math.max(1, Math.min(4, Number.parseInt(pageSlot, 10) || 1));
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
-    <rect width="144" height="144" fill="#18181b"/>
-    <text x="72" y="54" fill="#71717a" font-family="sans-serif" font-size="18" font-weight="bold" text-anchor="middle">PAGE</text>
-    <text x="72" y="82" fill="#ffffff" font-family="sans-serif" font-size="28" font-weight="bold" text-anchor="middle">${safeSlot}</text>
-    <text x="72" y="108" fill="#52525b" font-family="sans-serif" font-size="14" text-anchor="middle">inactive</text>
-  </svg>`;
-  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-}
 
 function generateFooterButtonImage(icon, title, line1, line2, footer = '') {
   const safeTitle = String(title || '');
