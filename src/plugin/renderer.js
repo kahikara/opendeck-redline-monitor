@@ -95,6 +95,17 @@ function generateBlankButtonImage() {
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
+function generateHiddenPageButtonImage(pageSlot) {
+  const safeSlot = Math.max(1, Math.min(4, Number.parseInt(pageSlot, 10) || 1));
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
+    <rect width="144" height="144" fill="#18181b"/>
+    <text x="72" y="54" fill="#71717a" font-family="sans-serif" font-size="18" font-weight="bold" text-anchor="middle">PAGE</text>
+    <text x="72" y="82" fill="#ffffff" font-family="sans-serif" font-size="28" font-weight="bold" text-anchor="middle">${safeSlot}</text>
+    <text x="72" y="108" fill="#52525b" font-family="sans-serif" font-size="14" text-anchor="middle">inactive</text>
+  </svg>`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
 function generateFooterButtonImage(icon, title, line1, line2, footer = '') {
   const safeTitle = String(title || '');
   const safeLine1 = String(line1 || '');
@@ -159,6 +170,7 @@ module.exports = {
   generateDialImage,
   generatePageDialImage,
   generateBlankButtonImage,
+  generateHiddenPageButtonImage,
   unavailableButton,
   unavailableDial,
 };

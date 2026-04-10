@@ -5,7 +5,7 @@ const state = require('./state');
 const { ACTIONS } = require('./constants');
 const { log, warn, clamp, runCommand, commandExists } = require('./utils');
 const { storeSettingsForContext, getSettingsForContext, getPluginWideSettings, getResolvedAction } = require('./settings');
-const { generateButtonImage, generateCenteredHeaderButtonImage, generateDialImage, generateFooterButtonImage, generatePageDialImage, generateBlankButtonImage, unavailableButton, unavailableDial } = require('./renderer');
+const { generateButtonImage, generateCenteredHeaderButtonImage, generateDialImage, generateFooterButtonImage, generatePageDialImage, generateBlankButtonImage, generateHiddenPageButtonImage, unavailableButton, unavailableDial } = require('./renderer');
 const transport = require('./transport');
 
 const { getCpuPower } = require('./system/cpu');
@@ -166,6 +166,18 @@ function createPressFeedbackImage(context, icon, title, valueText, detailText, c
   }
 
   return generateButtonImage(icon, title, valueText, detailText, -1);
+}
+
+function ensureContextPageSlot(context, action) {
+  if (!context || action === ACTIONS.page) return;
+
+  const current = state.contextSettings[context] || {};
+  if (Number.isFinite(Number.parseInt(current.pageSlot, 10))) return;
+
+  storeSettingsForContext(context, {
+    ...current,
+    pageSlot: state.activePageIndex + 1,
+  });
 }
 
 async function refreshActionAfterPress(context, resolvedAction) {
@@ -461,7 +473,7 @@ async function pollOnce() {
       }
 
       if (settings.pageSlot !== state.activePageIndex + 1) {
-        transport.sendUpdateIfChanged(context, generateBlankButtonImage());
+        transport.sendUpdateIfChanged(context, generateHiddenPageButtonImage(settings.pageSlot));
         continue;
       }
 
@@ -614,6 +626,7 @@ async function handleMessage(data) {
       transport.invalidateContext(context);
       const incomingSettings = extractIncomingSettings(message.payload);
       const refreshChanged = storeSettingsForContext(context, incomingSettings);
+      ensureContextPageSlot(context, action);
 
       if (action === ACTIONS.timer) {
         ensureTimer(context);
