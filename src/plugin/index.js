@@ -602,17 +602,6 @@ async function handleMessage(data) {
         updateBrightnessUI(context);
       }
 
-      if (action === ACTIONS.page) {
-        const pageName = pluginWide[`pageName${state.activePageIndex + 1}`] || `Page ${state.activePageIndex + 1}`;
-        transport.sendUpdateIfChanged(context, generatePageDialImage('📑', 'PAGE', pageName.toUpperCase(), state.activePageIndex, pageCount));
-        continue;
-      }
-
-      if (settings.pageSlot !== state.activePageIndex + 1) {
-        transport.sendUpdateIfChanged(context, generateBlankButtonImage());
-        continue;
-      }
-
       if (action === ACTIONS.audio) {
         await updateAudioImmediately(context);
       }
