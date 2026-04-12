@@ -1,18 +1,35 @@
+const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const state = require('../state');
 const { fileExists, readText, warnOnce } = require('../utils');
 
-function findAmdGpuDir(force = false) {
-  if (state.amdgpuDirCache && !force && fileExists(path.join(state.amdgpuDirCache, 'name'))) {
-    return state.amdgpuDirCache;
+function unavailableGpuStats() {
+  return {
+    available: false,
+    temp: 0,
+    power: 0,
+    usage: 0,
+    vramUsed: 0,
+    vramTotal: 0,
+  };
+}
+
+function getPciBusIdFromHwmonDir(gpuDir) {
+  try {
+    const devicePath = fs.realpathSync(path.join(gpuDir, 'device'));
+    const maybePciBusId = path.basename(devicePath);
+    return /^\d{4}:\d{2}:\d{2}\.\d$/.test(maybePciBusId) ? maybePciBusId : '';
+  } catch (error) {
+    return '';
   }
+}
 
-  state.amdgpuDirCache = null;
-
+function scanAmdGpuDirs() {
   try {
     const hwmonRoot = '/sys/class/hwmon';
-    const dirs = require('fs').readdirSync(hwmonRoot);
+    const dirs = fs.readdirSync(hwmonRoot);
+    const matches = [];
 
     for (const dir of dirs) {
       const fullPath = path.join(hwmonRoot, dir);
@@ -20,29 +37,54 @@ function findAmdGpuDir(force = false) {
 
       if (!fileExists(namePath)) continue;
       if (readText(namePath) === 'amdgpu') {
-        state.amdgpuDirCache = fullPath;
-        return state.amdgpuDirCache;
+        matches.push(fullPath);
       }
     }
+
+    return matches;
   } catch (error) {
     warnOnce('amdgpu-scan-failed', `amdgpu scan failed: ${error.message}`);
+    return [];
   }
-
-  return null;
 }
 
-function getAmdGpuStats() {
-  const gpuDir = findAmdGpuDir();
+function getAmdGpuEntries(force = false) {
+  const scanned = scanAmdGpuDirs();
+  let ordered = scanned;
 
-  if (!gpuDir) {
+  if (!force && state.amdgpuDirCache && fileExists(path.join(state.amdgpuDirCache, 'name')) && scanned.includes(state.amdgpuDirCache)) {
+    ordered = [state.amdgpuDirCache, ...scanned.filter((dir) => dir !== state.amdgpuDirCache)];
+  }
+
+  state.amdgpuDirCache = ordered[0] || null;
+
+  return ordered.map((gpuDir, index) => {
+    const pciBusId = getPciBusIdFromHwmonDir(gpuDir);
+    const id = `amd:${pciBusId || index}`;
+
     return {
-      available: false,
-      temp: 0,
-      power: 0,
-      usage: 0,
-      vramUsed: 0,
-      vramTotal: 0,
+      kind: 'amd',
+      id,
+      legacyId: `amd:${index}`,
+      pciBusId,
+      gpuDir,
+      label: `AMD GPU ${index + 1}${pciBusId ? ` (${pciBusId})` : ''}`,
     };
+  });
+}
+
+function findAmdGpuDir(force = false) {
+  if (state.amdgpuDirCache && !force && fileExists(path.join(state.amdgpuDirCache, 'name'))) {
+    return state.amdgpuDirCache;
+  }
+
+  const entries = getAmdGpuEntries(force);
+  return entries[0]?.gpuDir || null;
+}
+
+function getAmdGpuStatsFromDir(gpuDir) {
+  if (!gpuDir) {
+    return unavailableGpuStats();
   }
 
   const readNumber = (file) => {
@@ -74,15 +116,17 @@ function getAmdGpuStats() {
   } catch (error) {
     state.amdgpuDirCache = null;
     warnOnce('amdgpu-read-failed', `amdgpu read failed: ${error.message}`);
-    return {
-      available: false,
-      temp: 0,
-      power: 0,
-      usage: 0,
-      vramUsed: 0,
-      vramTotal: 0,
-    };
+    return unavailableGpuStats();
   }
+}
+
+function getAmdGpuStats() {
+  return getAmdGpuStatsFromDir(findAmdGpuDir());
+}
+
+function getAmdGpuStatsBySelector(selector) {
+  const entry = getAmdGpuEntries().find((candidate) => selector === candidate.id || selector === candidate.legacyId);
+  return entry ? getAmdGpuStatsFromDir(entry.gpuDir) : unavailableGpuStats();
 }
 
 function parseNvidiaCsvNumber(value) {
@@ -90,73 +134,144 @@ function parseNvidiaCsvNumber(value) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
-function getNvidiaGpuStats() {
+function runNvidiaQuery(fields) {
+  return execFileSync(
+    'nvidia-smi',
+    [
+      `--query-gpu=${fields.join(',')}`,
+      '--format=csv,noheader,nounits',
+    ],
+    { encoding: 'utf8', timeout: 1500 }
+  ).trim();
+}
+
+function parseNvidiaCsvLine(line) {
+  return String(line || '').split(',').map((part) => part.trim());
+}
+
+function getNvidiaGpuStatsFromValues(usageRaw, tempRaw, vramUsedRaw, vramTotalRaw, powerRaw) {
+  return {
+    available: true,
+    temp: Math.round(parseNvidiaCsvNumber(tempRaw)),
+    power: Math.round(parseNvidiaCsvNumber(powerRaw)),
+    usage: Math.round(parseNvidiaCsvNumber(usageRaw)),
+    vramUsed: Math.round(parseNvidiaCsvNumber(vramUsedRaw) * 1024 * 1024),
+    vramTotal: Math.round(parseNvidiaCsvNumber(vramTotalRaw) * 1024 * 1024),
+  };
+}
+
+function getNvidiaGpuEntries() {
   try {
-    const output = execFileSync(
-      'nvidia-smi',
-      [
-        '--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total,power.draw',
-        '--format=csv,noheader,nounits',
-      ],
-      { encoding: 'utf8', timeout: 1500 }
-    ).trim();
+    const output = runNvidiaQuery(['index', 'pci.bus_id', 'name']);
 
     if (!output) {
-      return {
-        available: false,
-        temp: 0,
-        power: 0,
-        usage: 0,
-        vramUsed: 0,
-        vramTotal: 0,
-      };
+      return [];
+    }
+
+    return output
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0)
+      .map((line, position) => {
+        const [indexRaw, pciBusIdRaw, nameRaw] = parseNvidiaCsvLine(line);
+        const index = String(indexRaw || position).trim();
+        const pciBusId = String(pciBusIdRaw || '').trim();
+        const name = nameRaw || `GPU ${position + 1}`;
+
+        return {
+          kind: 'nvidia',
+          id: `nvidia:${pciBusId || index}`,
+          legacyId: `nvidia:${index}`,
+          index,
+          pciBusId,
+          label: `NVIDIA ${name}${pciBusId ? ` (${pciBusId})` : ''}`,
+        };
+      });
+  } catch (error) {
+    warnOnce('nvidia-smi-scan-failed', `nvidia-smi scan failed: ${error.message}`);
+    return [];
+  }
+}
+
+function getNvidiaGpuStats() {
+  try {
+    const output = runNvidiaQuery(['utilization.gpu', 'temperature.gpu', 'memory.used', 'memory.total', 'power.draw']);
+
+    if (!output) {
+      return unavailableGpuStats();
     }
 
     const firstLine = output.split(/\r?\n/).find((line) => line.trim().length > 0);
     if (!firstLine) {
-      return {
-        available: false,
-        temp: 0,
-        power: 0,
-        usage: 0,
-        vramUsed: 0,
-        vramTotal: 0,
-      };
+      return unavailableGpuStats();
     }
 
-    const [usageRaw, tempRaw, vramUsedRaw, vramTotalRaw, powerRaw] = firstLine.split(',').map((part) => part.trim());
-
-    return {
-      available: true,
-      temp: Math.round(parseNvidiaCsvNumber(tempRaw)),
-      power: Math.round(parseNvidiaCsvNumber(powerRaw)),
-      usage: Math.round(parseNvidiaCsvNumber(usageRaw)),
-      vramUsed: Math.round(parseNvidiaCsvNumber(vramUsedRaw) * 1024 * 1024),
-      vramTotal: Math.round(parseNvidiaCsvNumber(vramTotalRaw) * 1024 * 1024),
-    };
+    const [usageRaw, tempRaw, vramUsedRaw, vramTotalRaw, powerRaw] = parseNvidiaCsvLine(firstLine);
+    return getNvidiaGpuStatsFromValues(usageRaw, tempRaw, vramUsedRaw, vramTotalRaw, powerRaw);
   } catch (error) {
     warnOnce('nvidia-smi-read-failed', `nvidia-smi read failed: ${error.message}`);
-    return {
-      available: false,
-      temp: 0,
-      power: 0,
-      usage: 0,
-      vramUsed: 0,
-      vramTotal: 0,
-    };
+    return unavailableGpuStats();
   }
 }
 
-function getGpuStats() {
-  const amdStats = getAmdGpuStats();
-  if (amdStats.available) {
-    return amdStats;
+function getNvidiaGpuStatsBySelector(selector) {
+  try {
+    const output = runNvidiaQuery(['index', 'pci.bus_id', 'utilization.gpu', 'temperature.gpu', 'memory.used', 'memory.total', 'power.draw']);
+
+    if (!output) {
+      return unavailableGpuStats();
+    }
+
+    for (const line of output.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+
+      const [indexRaw, pciBusIdRaw, usageRaw, tempRaw, vramUsedRaw, vramTotalRaw, powerRaw] = parseNvidiaCsvLine(line);
+      const index = String(indexRaw || '').trim();
+      const pciBusId = String(pciBusIdRaw || '').trim();
+
+      if (selector === `nvidia:${pciBusId}` || selector === `nvidia:${index}`) {
+        return getNvidiaGpuStatsFromValues(usageRaw, tempRaw, vramUsedRaw, vramTotalRaw, powerRaw);
+      }
+    }
+
+    return unavailableGpuStats();
+  } catch (error) {
+    warnOnce('nvidia-smi-read-failed', `nvidia-smi read failed: ${error.message}`);
+    return unavailableGpuStats();
+  }
+}
+
+function listAvailableGpus() {
+  return [
+    ...getAmdGpuEntries(),
+    ...getNvidiaGpuEntries(),
+  ].map(({ id, label }) => ({ id, label }));
+}
+
+function getGpuStats(selector = 'auto') {
+  const normalizedSelector = typeof selector === 'string' ? selector.trim() : '';
+
+  if (!normalizedSelector || normalizedSelector === 'auto') {
+    const amdStats = getAmdGpuStats();
+    if (amdStats.available) {
+      return amdStats;
+    }
+
+    return getNvidiaGpuStats();
   }
 
-  return getNvidiaGpuStats();
+  if (normalizedSelector.startsWith('amd:')) {
+    return getAmdGpuStatsBySelector(normalizedSelector);
+  }
+
+  if (normalizedSelector.startsWith('nvidia:')) {
+    return getNvidiaGpuStatsBySelector(normalizedSelector);
+  }
+
+  return getGpuStats('auto');
 }
 
 module.exports = {
   getAmdGpuStats,
   getGpuStats,
+  listAvailableGpus,
 };

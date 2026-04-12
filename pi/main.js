@@ -4,6 +4,7 @@
   const fields = {
     pingHost: $('pingHost'),
     networkInterface: $('networkInterface'),
+    gpuSelector: $('gpuSelector'),
     volumeStep: $('volumeStep'),
     brightnessStep: $('brightnessStep'),
     timerStep: $('timerStep'),
@@ -14,6 +15,7 @@
   };
 
   const pressCommandWrap = $('pressCommandWrap');
+  const gpuSelectorWrap = $('gpuSelectorWrap');
   const saveButton = $('saveButton');
   const statusText = $('statusText');
 
@@ -21,10 +23,12 @@
   let uuid = null;
   let actionInfo = null;
   let actionContext = null;
+  let currentGpuOptions = [];
 
   const DEFAULT_SETTINGS = Object.freeze({
     pingHost: '1.1.1.1',
     networkInterface: '',
+    gpuSelector: 'auto',
     volumeStep: 2,
     brightnessStep: 5,
     timerStep: 1,
@@ -36,6 +40,47 @@
 
   function setStatus(text) {
     statusText.textContent = text;
+  }
+
+  function actionUsesGpuSelector() {
+    const actionId = actionInfo?.action || '';
+    return actionId.endsWith('.gpu') || actionId.endsWith('.vram');
+  }
+
+  function updateGpuSelectorVisibility() {
+    gpuSelectorWrap.classList.toggle('hidden', !actionUsesGpuSelector());
+  }
+
+  function renderGpuOptions(options = [], selectedValue = DEFAULT_SETTINGS.gpuSelector) {
+    const merged = [{ id: DEFAULT_SETTINGS.gpuSelector, label: 'Auto' }];
+
+    if (Array.isArray(options)) {
+      for (const option of options) {
+        const id = typeof option?.id === 'string' ? option.id.trim() : '';
+        if (!id || merged.some((entry) => entry.id === id)) {
+          continue;
+        }
+
+        const label = typeof option?.label === 'string' && option.label.trim() ? option.label.trim() : id;
+        merged.push({ id, label });
+      }
+    }
+
+    const desiredValue = String(selectedValue || DEFAULT_SETTINGS.gpuSelector).trim() || DEFAULT_SETTINGS.gpuSelector;
+    if (!merged.some((entry) => entry.id === desiredValue)) {
+      merged.push({ id: desiredValue, label: `${desiredValue} (missing)` });
+    }
+
+    fields.gpuSelector.innerHTML = '';
+
+    for (const option of merged) {
+      const node = document.createElement('option');
+      node.value = option.id;
+      node.textContent = option.label;
+      fields.gpuSelector.appendChild(node);
+    }
+
+    fields.gpuSelector.value = desiredValue;
   }
 
   function updatePressCommandVisibility() {
@@ -53,6 +98,11 @@
 
     if (typeof settings.networkInterface === 'string') {
       normalized.networkInterface = settings.networkInterface.trim();
+    }
+
+    if (typeof settings.gpuSelector === 'string') {
+      const gpuSelector = settings.gpuSelector.trim();
+      normalized.gpuSelector = gpuSelector || DEFAULT_SETTINGS.gpuSelector;
     }
 
     if (settings.volumeStep !== undefined) {
@@ -90,6 +140,7 @@
 
     fields.pingHost.value = normalized.pingHost;
     fields.networkInterface.value = normalized.networkInterface;
+    renderGpuOptions(currentGpuOptions, normalized.gpuSelector);
     fields.volumeStep.value = String(normalized.volumeStep);
     fields.brightnessStep.value = String(normalized.brightnessStep);
     fields.timerStep.value = String(normalized.timerStep);
@@ -99,12 +150,14 @@
     fields.pressCommand.value = normalized.pressCommand;
 
     updatePressCommandVisibility();
+    updateGpuSelectorVisibility();
   }
 
   function collectSettings() {
     return normalizeSettings({
       pingHost: fields.pingHost.value,
       networkInterface: fields.networkInterface.value,
+      gpuSelector: fields.gpuSelector.value,
       volumeStep: fields.volumeStep.value,
       brightnessStep: fields.brightnessStep.value,
       timerStep: fields.timerStep.value,
@@ -124,7 +177,7 @@
   }
 
   function extractIncomingSettings(payload = {}) {
-    const knownKeys = ['pingHost', 'networkInterface', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate', 'pressAction', 'pressCommand'];
+    const knownKeys = ['pingHost', 'networkInterface', 'gpuSelector', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate', 'pressAction', 'pressCommand'];
 
     function visit(value, depth = 0) {
       if (!value || typeof value !== 'object' || depth > 6) {
@@ -160,6 +213,18 @@
     }
 
     return visit(payload);
+  }
+
+  function extractGpuOptions(payload = {}) {
+    if (Array.isArray(payload.gpuOptions)) {
+      return payload.gpuOptions;
+    }
+
+    if (payload.settings && Array.isArray(payload.settings.gpuOptions)) {
+      return payload.settings.gpuOptions;
+    }
+
+    return [];
   }
 
   function saveSettings() {
@@ -212,6 +277,7 @@
     }
 
     actionContext = actionInfo?.context || null;
+    updateGpuSelectorVisibility();
 
     applySettings(extractIncomingSettings(actionInfo?.payload || {}));
     websocket = new WebSocket(`ws://127.0.0.1:${inPort}`);
@@ -244,9 +310,16 @@
       }
 
       if (message.event === 'sendToPropertyInspector' && message.context === actionContext) {
+        if (Array.isArray(message.payload?.gpuOptions)) {
+          currentGpuOptions = extractGpuOptions(message.payload);
+          renderGpuOptions(currentGpuOptions, fields.gpuSelector.value);
+        }
+
         if (Object.keys(incomingSettings).length > 0) {
           applySettings(incomingSettings);
           setStatus('Settings synced');
+        } else if (Array.isArray(message.payload?.gpuOptions)) {
+          setStatus('GPU list updated');
         }
       }
     });

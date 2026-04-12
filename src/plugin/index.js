@@ -9,7 +9,7 @@ const { generateButtonImage, generateCenteredHeaderButtonImage, generateDialImag
 const transport = require('./transport');
 
 const { getCpuPower } = require('./system/cpu');
-const { getGpuStats } = require('./system/gpu');
+const { getGpuStats, listAvailableGpus } = require('./system/gpu');
 const { getNetworkStats } = require('./system/network');
 const { refreshMonitorBrightness, setMonitorBrightness, getBrightnessState } = require('./system/brightness');
 const { getAudio, adjustVolume, toggleMute } = require('./system/audio');
@@ -122,6 +122,17 @@ async function updatePingImmediately(context) {
   );
 }
 
+function sendGpuOptionsToPropertyInspector(context) {
+  transport.safeSend({
+    event: 'sendToPropertyInspector',
+    context,
+    payload: {
+      settings: getSettingsForContext(context),
+      gpuOptions: listAvailableGpus(),
+    },
+  });
+}
+
 async function openActionTool(action, context) {
   const launcher = ACTION_LAUNCHERS[action];
   if (!launcher) return false;
@@ -229,7 +240,7 @@ async function runCustomPressCommand(context, settings, resolvedAction) {
 }
 
 function extractIncomingSettings(payload = {}) {
-  const knownKeys = ['pingHost', 'networkInterface', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate', 'pressAction', 'pressCommand', ];
+  const knownKeys = ['pingHost', 'networkInterface', 'gpuSelector', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate', 'pressAction', 'pressCommand', ];
 
   function visit(value, depth = 0) {
     if (!value || typeof value !== 'object' || depth > 6) {
@@ -357,6 +368,16 @@ async function getCachedNetworkStats(cache, networkInterface = '') {
   return cache.get(key);
 }
 
+function getCachedGpuStats(cache, gpuSelector = 'auto') {
+  const key = String(gpuSelector || '').trim() || 'auto';
+
+  if (!cache.has(key)) {
+    cache.set(key, getGpuStats(key));
+  }
+
+  return cache.get(key);
+}
+
 async function pollOnce() {
   if (state.pollingInProgress || state.shuttingDown) return;
   state.pollingInProgress = true;
@@ -372,6 +393,7 @@ async function pollOnce() {
     let audioData = { available: false, vol: 0, muted: false };
     let procData = state.procCache.data;
     const networkStatsCache = new Map();
+    const gpuStatsCache = new Map();
 
     const needsCpu = actionsList.includes(ACTIONS.cpu);
     const needsRam = actionsList.includes(ACTIONS.ram);
@@ -430,7 +452,6 @@ async function pollOnce() {
 
     await Promise.allSettled(promises);
 
-    const gpuStats = needsGpu ? getGpuStats() : null;
     const cpuPower = needsCpu ? getCpuPower() : { available: false, watts: 0 };
     const diskSummary = summarizeDisks(diskData);
 
@@ -476,6 +497,8 @@ async function pollOnce() {
           image = generateButtonImage('💻', 'CPU', `${load}%`, `${wattsText} | ${temp}°C`, load);
         }
       } else if (action === ACTIONS.gpu) {
+        const gpuStats = getCachedGpuStats(gpuStatsCache, settings.gpuSelector);
+
         if (!gpuStats?.available) {
           image = unavailableButton('🎮', 'GPU', 'NO GPU');
         } else {
@@ -495,6 +518,8 @@ async function pollOnce() {
           image = generateButtonImage('🧠', 'RAM', `${Math.round(percent)}%`, `${usedGB} / ${totalGB} GB`, percent);
         }
       } else if (action === ACTIONS.vram) {
+        const gpuStats = getCachedGpuStats(gpuStatsCache, settings.gpuSelector);
+
         if (!gpuStats?.available || !gpuStats.vramTotal) {
           image = unavailableButton('🎞️', 'VRAM', 'NO VRAM');
         } else {
@@ -592,6 +617,10 @@ async function handleMessage(data) {
       const incomingSettings = extractIncomingSettings(message.payload);
       const refreshChanged = storeSettingsForContext(context, incomingSettings);
 
+      if (action === ACTIONS.gpu || action === ACTIONS.vram) {
+        sendGpuOptionsToPropertyInspector(context);
+      }
+
       if (action === ACTIONS.timer) {
         ensureTimer(context);
       }
@@ -629,6 +658,10 @@ async function handleMessage(data) {
       const refreshChanged = storeSettingsForContext(context, incomingSettings);
       transport.invalidateContext(context);
 
+      if (resolvedAction === ACTIONS.gpu || resolvedAction === ACTIONS.vram) {
+        sendGpuOptionsToPropertyInspector(context);
+      }
+
       if (resolvedAction === ACTIONS.audio) {
         await updateAudioImmediately(context);
       } else if (resolvedAction === ACTIONS.monbright) {
@@ -652,6 +685,10 @@ async function handleMessage(data) {
         const resolvedAction = getResolvedAction(context, action);
         const refreshChanged = storeSettingsForContext(context, incomingSettings);
         transport.invalidateContext(context);
+
+        if (resolvedAction === ACTIONS.gpu || resolvedAction === ACTIONS.vram) {
+          sendGpuOptionsToPropertyInspector(context);
+        }
 
         if (resolvedAction === ACTIONS.audio) {
           await updateAudioImmediately(context);
