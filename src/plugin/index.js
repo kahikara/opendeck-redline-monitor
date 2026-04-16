@@ -13,6 +13,7 @@ const { getGpuStats, listAvailableGpus } = require('./system/gpu');
 const { getNetworkStats } = require('./system/network');
 const { refreshMonitorBrightness, setMonitorBrightness, getBrightnessState } = require('./system/brightness');
 const { getAudio, adjustVolume, toggleMute } = require('./system/audio');
+const { getMouseBattery } = require('./system/battery');
 const { getPingState, getPing } = require('./system/ping');
 const { getTopProcessSummary } = require('./system/top');
 const { summarizeDisks } = require('./system/disk');
@@ -106,6 +107,21 @@ async function updateAudioImmediately(context) {
   transport.sendUpdateIfChanged(context, generateDialImage(icon, 'VOLUME', valueText, audioData.vol, barColor));
 }
 
+
+
+async function updateBatteryImmediately(context) {
+  const batteryData = await getMouseBattery();
+
+  if (!batteryData.available) {
+    transport.sendUpdateIfChanged(context, unavailableButton('🔋', 'BATTERY', 'NO DATA'));
+    return;
+  }
+
+  transport.sendUpdateIfChanged(
+    context,
+    generateButtonImage('🔋', 'BATTERY', `${batteryData.percentage}%`, batteryData.state, batteryData.percentage)
+  );
+}
 
 async function updatePingImmediately(context) {
   const settings = getSettingsForContext(context);
@@ -391,6 +407,7 @@ async function pollOnce() {
     let memData = {};
     let diskData = [];
     let audioData = { available: false, vol: 0, muted: false };
+    let batteryData = { available: false, percentage: 0, state: 'NO DATA' };
     let procData = state.procCache.data;
     const networkStatsCache = new Map();
     const gpuStatsCache = new Map();
@@ -402,6 +419,7 @@ async function pollOnce() {
     const needsAudio = actionsList.includes(ACTIONS.audio);
     const needsGpu = actionsList.includes(ACTIONS.gpu) || actionsList.includes(ACTIONS.vram);
     const needsBrightness = actionsList.includes(ACTIONS.monbright);
+    const needsBattery = actionsList.includes(ACTIONS.battery);
 
     const promises = [];
 
@@ -450,6 +468,12 @@ async function pollOnce() {
       });
     }
 
+    if (needsBattery) {
+      trackPromise(promises, 'getMouseBattery', async () => {
+        batteryData = await getMouseBattery();
+      });
+    }
+
     await Promise.allSettled(promises);
 
     const cpuPower = needsCpu ? getCpuPower() : { available: false, watts: 0 };
@@ -477,6 +501,16 @@ async function pollOnce() {
 
       if (action === ACTIONS.monbright) {
         updateBrightnessUI(context);
+        continue;
+      }
+
+      if (action === ACTIONS.battery) {
+        if (!batteryData.available) {
+          image = unavailableButton('🔋', 'BATTERY', 'NO DATA');
+        } else {
+          image = generateButtonImage('🔋', 'BATTERY', `${batteryData.percentage}%`, batteryData.state, batteryData.percentage);
+        }
+        transport.sendUpdateIfChanged(context, image);
         continue;
       }
 
@@ -630,6 +664,10 @@ async function handleMessage(data) {
         updateBrightnessUI(context);
       }
 
+      if (action === ACTIONS.battery) {
+        await updateBatteryImmediately(context);
+      }
+
       if (action === ACTIONS.audio) {
         await updateAudioImmediately(context);
       }
@@ -666,6 +704,8 @@ async function handleMessage(data) {
         await updateAudioImmediately(context);
       } else if (resolvedAction === ACTIONS.monbright) {
         updateBrightnessUI(context);
+      } else if (resolvedAction === ACTIONS.battery) {
+        await updateBatteryImmediately(context);
       } else if (resolvedAction === ACTIONS.ping) {
         await updatePingImmediately(context);
       } else if (resolvedAction === ACTIONS.timer) {
@@ -698,6 +738,8 @@ async function handleMessage(data) {
           await updateAudioImmediately(context);
         } else if (resolvedAction === ACTIONS.monbright) {
           updateBrightnessUI(context);
+        } else if (resolvedAction === ACTIONS.battery) {
+          await updateBatteryImmediately(context);
         } else if (resolvedAction === ACTIONS.ping) {
           await updatePingImmediately(context);
         } else if (resolvedAction === ACTIONS.timer) {
@@ -769,6 +811,10 @@ async function handleMessage(data) {
 
         if (resolvedAction === ACTIONS.ping) {
           await updatePingImmediately(context);
+        }
+
+        if (resolvedAction === ACTIONS.battery) {
+          await updateBatteryImmediately(context);
         }
       }
 

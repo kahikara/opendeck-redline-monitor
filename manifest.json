@@ -141,6 +141,17 @@
         }
       ],
       "PropertyInspectorPath": "pi/index.html"
+    },
+    {
+      "Icon": "icons/icon_battery",
+      "Name": "Battery",
+      "UUID": "com.kahikara.opendeck-redline.battery",
+      "States": [
+        {
+          "Image": "icons/actionDefaultImage"
+        }
+      ],
+      "PropertyInspectorPath": "pi/index.html"
     }
   ],
   "Author": "Ming",
@@ -159,5 +170,5 @@
   "Software": {
     "MinimumVersion": "5.0"
   },
-  "Version": "1.0.2"
+  "Version": "1.0.4"
 }

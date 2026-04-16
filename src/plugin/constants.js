@@ -13,6 +13,7 @@ const ACTIONS = Object.freeze({
   audio: `${PLUGIN_PREFIX}.audio`,
   timer: `${PLUGIN_PREFIX}.timer`,
   monbright: `${PLUGIN_PREFIX}.monbright`,
+  battery: `${PLUGIN_PREFIX}.battery`,
 });
 
 const DEFAULT_SETTINGS = Object.freeze({
