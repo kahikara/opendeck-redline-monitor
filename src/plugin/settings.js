@@ -24,6 +24,11 @@ function normalizeSettings(settings = {}) {
     normalized.gpuSelector = gpuSelector || DEFAULT_SETTINGS.gpuSelector;
   }
 
+  if (typeof settings.batteryDevice === 'string') {
+    const batteryDevice = settings.batteryDevice.trim();
+    normalized.batteryDevice = batteryDevice || DEFAULT_SETTINGS.batteryDevice;
+  }
+
   if (settings.volumeStep !== undefined) {
     normalized.volumeStep = clamp(Number.parseInt(settings.volumeStep, 10) || DEFAULT_SETTINGS.volumeStep, 1, 20);
   }
@@ -49,10 +54,6 @@ function normalizeSettings(settings = {}) {
 
   if (typeof settings.pressCommand === 'string') {
     normalized.pressCommand = settings.pressCommand.trim();
-  }
-
-  if (typeof settings.gpuSelector === 'string' && settings.gpuSelector.trim()) {
-    normalized.gpuSelector = settings.gpuSelector.trim();
   }
 
   return normalized;

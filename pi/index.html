@@ -48,6 +48,14 @@
             <p class="hint">Used by the GPU and VRAM actions. Auto keeps the current behavior.</p>
           </section>
 
+          <section id="batterySelectorWrap" class="card hidden">
+            <label for="batteryDevice">Battery device</label>
+            <select id="batteryDevice">
+              <option value="auto">Auto</option>
+            </select>
+            <p class="hint">Used by the Battery action. Auto picks the preferred UPower device.</p>
+          </section>
+
           <section class="card">
             <label for="volumeStep">Volume step</label>
             <input id="volumeStep" type="number" min="1" max="20" step="1" value="2">

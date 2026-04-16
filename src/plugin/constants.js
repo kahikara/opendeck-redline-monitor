@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   pingHost: '1.1.1.1',
   networkInterface: '',
   gpuSelector: 'auto',
+  batteryDevice: 'auto',
   volumeStep: 2,
   brightnessStep: 5,
   timerStep: 1,
@@ -27,7 +28,6 @@ const DEFAULT_SETTINGS = Object.freeze({
   refreshRate: 3,
   pressAction: 'default',
   pressCommand: '',
-  gpuSelector: 'auto',
 });
 
 const POLL_INTERVAL_MS = 2000;

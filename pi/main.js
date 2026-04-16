@@ -5,6 +5,7 @@
     pingHost: $('pingHost'),
     networkInterface: $('networkInterface'),
     gpuSelector: $('gpuSelector'),
+    batteryDevice: $('batteryDevice'),
     volumeStep: $('volumeStep'),
     brightnessStep: $('brightnessStep'),
     timerStep: $('timerStep'),
@@ -16,6 +17,7 @@
 
   const pressCommandWrap = $('pressCommandWrap');
   const gpuSelectorWrap = $('gpuSelectorWrap');
+  const batterySelectorWrap = $('batterySelectorWrap');
   const saveButton = $('saveButton');
   const statusText = $('statusText');
 
@@ -24,11 +26,13 @@
   let actionInfo = null;
   let actionContext = null;
   let currentGpuOptions = [];
+  let currentBatteryOptions = [];
 
   const DEFAULT_SETTINGS = Object.freeze({
     pingHost: '1.1.1.1',
     networkInterface: '',
     gpuSelector: 'auto',
+    batteryDevice: 'auto',
     volumeStep: 2,
     brightnessStep: 5,
     timerStep: 1,
@@ -47,8 +51,17 @@
     return actionId.endsWith('.gpu') || actionId.endsWith('.vram');
   }
 
+  function actionUsesBatterySelector() {
+    const actionId = actionInfo?.action || '';
+    return actionId.endsWith('.battery');
+  }
+
   function updateGpuSelectorVisibility() {
     gpuSelectorWrap.classList.toggle('hidden', !actionUsesGpuSelector());
+  }
+
+  function updateBatterySelectorVisibility() {
+    batterySelectorWrap.classList.toggle('hidden', !actionUsesBatterySelector());
   }
 
   function renderGpuOptions(options = [], selectedValue = DEFAULT_SETTINGS.gpuSelector) {
@@ -83,6 +96,38 @@
     fields.gpuSelector.value = desiredValue;
   }
 
+  function renderBatteryOptions(options = [], selectedValue = DEFAULT_SETTINGS.batteryDevice) {
+    const merged = [{ id: DEFAULT_SETTINGS.batteryDevice, label: 'Auto' }];
+
+    if (Array.isArray(options)) {
+      for (const option of options) {
+        const id = typeof option?.id === 'string' ? option.id.trim() : '';
+        if (!id || merged.some((entry) => entry.id === id)) {
+          continue;
+        }
+
+        const label = typeof option?.label === 'string' && option.label.trim() ? option.label.trim() : id;
+        merged.push({ id, label });
+      }
+    }
+
+    const desiredValue = String(selectedValue || DEFAULT_SETTINGS.batteryDevice).trim() || DEFAULT_SETTINGS.batteryDevice;
+    if (!merged.some((entry) => entry.id === desiredValue)) {
+      merged.push({ id: desiredValue, label: `${desiredValue} (missing)` });
+    }
+
+    fields.batteryDevice.innerHTML = '';
+
+    for (const option of merged) {
+      const node = document.createElement('option');
+      node.value = option.id;
+      node.textContent = option.label;
+      fields.batteryDevice.appendChild(node);
+    }
+
+    fields.batteryDevice.value = desiredValue;
+  }
+
   function updatePressCommandVisibility() {
     pressCommandWrap.classList.toggle('hidden', fields.pressAction.value !== 'command');
   }
@@ -103,6 +148,11 @@
     if (typeof settings.gpuSelector === 'string') {
       const gpuSelector = settings.gpuSelector.trim();
       normalized.gpuSelector = gpuSelector || DEFAULT_SETTINGS.gpuSelector;
+    }
+
+    if (typeof settings.batteryDevice === 'string') {
+      const batteryDevice = settings.batteryDevice.trim();
+      normalized.batteryDevice = batteryDevice || DEFAULT_SETTINGS.batteryDevice;
     }
 
     if (settings.volumeStep !== undefined) {
@@ -141,6 +191,7 @@
     fields.pingHost.value = normalized.pingHost;
     fields.networkInterface.value = normalized.networkInterface;
     renderGpuOptions(currentGpuOptions, normalized.gpuSelector);
+    renderBatteryOptions(currentBatteryOptions, normalized.batteryDevice);
     fields.volumeStep.value = String(normalized.volumeStep);
     fields.brightnessStep.value = String(normalized.brightnessStep);
     fields.timerStep.value = String(normalized.timerStep);
@@ -151,6 +202,7 @@
 
     updatePressCommandVisibility();
     updateGpuSelectorVisibility();
+    updateBatterySelectorVisibility();
   }
 
   function collectSettings() {
@@ -158,6 +210,7 @@
       pingHost: fields.pingHost.value,
       networkInterface: fields.networkInterface.value,
       gpuSelector: fields.gpuSelector.value,
+      batteryDevice: fields.batteryDevice.value,
       volumeStep: fields.volumeStep.value,
       brightnessStep: fields.brightnessStep.value,
       timerStep: fields.timerStep.value,
@@ -177,7 +230,7 @@
   }
 
   function extractIncomingSettings(payload = {}) {
-    const knownKeys = ['pingHost', 'networkInterface', 'gpuSelector', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate', 'pressAction', 'pressCommand'];
+    const knownKeys = ['pingHost', 'networkInterface', 'gpuSelector', 'batteryDevice', 'volumeStep', 'brightnessStep', 'timerStep', 'topMode', 'refreshRate', 'pressAction', 'pressCommand'];
 
     function visit(value, depth = 0) {
       if (!value || typeof value !== 'object' || depth > 6) {
@@ -222,6 +275,18 @@
 
     if (payload.settings && Array.isArray(payload.settings.gpuOptions)) {
       return payload.settings.gpuOptions;
+    }
+
+    return [];
+  }
+
+  function extractBatteryOptions(payload = {}) {
+    if (Array.isArray(payload.batteryOptions)) {
+      return payload.batteryOptions;
+    }
+
+    if (payload.settings && Array.isArray(payload.settings.batteryOptions)) {
+      return payload.settings.batteryOptions;
     }
 
     return [];
@@ -278,6 +343,7 @@
 
     actionContext = actionInfo?.context || null;
     updateGpuSelectorVisibility();
+    updateBatterySelectorVisibility();
 
     applySettings(extractIncomingSettings(actionInfo?.payload || {}));
     websocket = new WebSocket(`ws://127.0.0.1:${inPort}`);
@@ -315,11 +381,16 @@
           renderGpuOptions(currentGpuOptions, fields.gpuSelector.value);
         }
 
+        if (Array.isArray(message.payload?.batteryOptions)) {
+          currentBatteryOptions = extractBatteryOptions(message.payload);
+          renderBatteryOptions(currentBatteryOptions, fields.batteryDevice.value);
+        }
+
         if (Object.keys(incomingSettings).length > 0) {
           applySettings(incomingSettings);
           setStatus('Settings synced');
-        } else if (Array.isArray(message.payload?.gpuOptions)) {
-          setStatus('GPU list updated');
+        } else if (Array.isArray(message.payload?.gpuOptions) || Array.isArray(message.payload?.batteryOptions)) {
+          setStatus('Options updated');
         }
       }
     });
