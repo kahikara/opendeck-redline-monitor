@@ -13,7 +13,7 @@ const { getGpuStats, listAvailableGpus } = require('./system/gpu');
 const { getNetworkStats } = require('./system/network');
 const { refreshMonitorBrightness, setMonitorBrightness, getBrightnessState } = require('./system/brightness');
 const { getAudio, adjustVolume, toggleMute } = require('./system/audio');
-const { getMouseBattery } = require('./system/battery');
+const { listBatteryDevices, getMouseBattery } = require('./system/battery');
 const { getPingState, getPing } = require('./system/ping');
 const { getTopProcessSummary } = require('./system/top');
 const { summarizeDisks } = require('./system/disk');
@@ -110,20 +110,28 @@ async function updateAudioImmediately(context) {
 
 
 async function updateBatteryImmediately(context) {
-  const batteryData = await getMouseBattery();
+  const settings = getSettingsForContext(context);
+  const batteryData = await getMouseBattery(settings.batteryDevice);
 
   if (!batteryData.available) {
     transport.sendUpdateIfChanged(
       context,
-      generateCenteredHeaderButtonImage('🔋', 'BATTERY', 'N/A', 'NO DATA', -1)
+      generateButtonImage('🔋', 'BATTERY', 'N/A', 'NO DATA', -1)
     );
     return;
   }
 
   transport.sendUpdateIfChanged(
     context,
-    generateCenteredHeaderButtonImage('🔋', 'BATTERY', `${batteryData.percentage}%`, batteryData.state, batteryData.percentage)
+    generateCenteredHeaderButtonImage('🔋', 'BATTERY', `${batteryData.percentage}%`, batteryData.label, batteryData.percentage)
   );
+}
+
+
+function trimBatteryLabel(label) {
+  const value = String(label || '').trim();
+  if (!value) return 'UNKNOWN';
+  return value.length > 14 ? `${value.slice(0, 13)}…` : value;
 }
 
 async function updatePingImmediately(context) {
@@ -148,6 +156,17 @@ function sendGpuOptionsToPropertyInspector(context) {
     payload: {
       settings: getSettingsForContext(context),
       gpuOptions: listAvailableGpus(),
+    },
+  });
+}
+
+async function sendBatteryOptionsToPropertyInspector(context) {
+  transport.safeSend({
+    event: 'sendToPropertyInspector',
+    context,
+    payload: {
+      settings: getSettingsForContext(context),
+      batteryOptions: await listBatteryDevices(),
     },
   });
 }
@@ -509,8 +528,8 @@ async function pollOnce() {
 
       if (action === ACTIONS.battery) {
         const image = !batteryData.available
-          ? generateCenteredHeaderButtonImage('🔋', 'BATTERY', 'N/A', 'NO DATA', -1)
-          : generateCenteredHeaderButtonImage('🔋', 'BATTERY', `${batteryData.percentage}%`, batteryData.state, batteryData.percentage);
+          ? generateButtonImage('🔋', 'BATTERY', 'N/A', 'NO DATA', -1)
+          : generateButtonImage('🔋', 'BATTERY', `${batteryData.percentage}%`, trimBatteryLabel(batteryData.label), batteryData.percentage);
         transport.sendUpdateIfChanged(context, image);
         continue;
       }
@@ -603,7 +622,7 @@ async function pollOnce() {
         const now = new Date();
         image = generateButtonImage(
           '🕒',
-          'UHR',
+          'CLOCK',
           now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
           now.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }),
           -1
@@ -656,6 +675,10 @@ async function handleMessage(data) {
         sendGpuOptionsToPropertyInspector(context);
       }
 
+      if (action === ACTIONS.battery) {
+        await sendBatteryOptionsToPropertyInspector(context);
+      }
+
       if (action === ACTIONS.timer) {
         ensureTimer(context);
       }
@@ -701,6 +724,10 @@ async function handleMessage(data) {
         sendGpuOptionsToPropertyInspector(context);
       }
 
+      if (resolvedAction === ACTIONS.battery) {
+        await sendBatteryOptionsToPropertyInspector(context);
+      }
+
       if (resolvedAction === ACTIONS.audio) {
         await updateAudioImmediately(context);
       } else if (resolvedAction === ACTIONS.monbright) {
@@ -729,6 +756,10 @@ async function handleMessage(data) {
 
         if (resolvedAction === ACTIONS.gpu || resolvedAction === ACTIONS.vram) {
           sendGpuOptionsToPropertyInspector(context);
+        }
+
+        if (resolvedAction === ACTIONS.battery) {
+          await sendBatteryOptionsToPropertyInspector(context);
         }
 
         if (resolvedAction === ACTIONS.gpu) {
