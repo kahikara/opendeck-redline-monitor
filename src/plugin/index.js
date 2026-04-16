@@ -113,13 +113,16 @@ async function updateBatteryImmediately(context) {
   const batteryData = await getMouseBattery();
 
   if (!batteryData.available) {
-    transport.sendUpdateIfChanged(context, unavailableButton('🔋', 'BATTERY', 'NO DATA'));
+    transport.sendUpdateIfChanged(
+      context,
+      generateCenteredHeaderButtonImage('🔋', 'BATTERY', 'N/A', 'NO DATA', -1)
+    );
     return;
   }
 
   transport.sendUpdateIfChanged(
     context,
-    generateButtonImage('🔋', 'BATTERY', `${batteryData.percentage}%`, batteryData.state, batteryData.percentage)
+    generateCenteredHeaderButtonImage('🔋', 'BATTERY', `${batteryData.percentage}%`, batteryData.state, batteryData.percentage)
   );
 }
 
@@ -505,11 +508,9 @@ async function pollOnce() {
       }
 
       if (action === ACTIONS.battery) {
-        if (!batteryData.available) {
-          image = unavailableButton('🔋', 'BATTERY', 'NO DATA');
-        } else {
-          image = generateButtonImage('🔋', 'BATTERY', `${batteryData.percentage}%`, batteryData.state, batteryData.percentage);
-        }
+        const image = !batteryData.available
+          ? generateCenteredHeaderButtonImage('🔋', 'BATTERY', 'N/A', 'NO DATA', -1)
+          : generateCenteredHeaderButtonImage('🔋', 'BATTERY', `${batteryData.percentage}%`, batteryData.state, batteryData.percentage);
         transport.sendUpdateIfChanged(context, image);
         continue;
       }
