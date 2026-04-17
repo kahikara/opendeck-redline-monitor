@@ -129,6 +129,11 @@ function trimBatteryLabel(label) {
   return value.length > 12 ? `${value.slice(0, 11)}…` : value;
 }
 
+function isBatteryChargingState(state) {
+  const value = String(state || '').trim().toUpperCase();
+  return value === 'CHARGING' || value === 'PENDING';
+}
+
 function renderBatteryImage(batteryData) {
   if (!batteryData?.available) {
     return generateButtonImage('🔋', 'BATTERY', 'N/A', 'NO DATA', -1);
@@ -140,7 +145,7 @@ function renderBatteryImage(batteryData) {
     `${batteryData.percentage}%`,
     trimBatteryLabel(batteryData.label),
     batteryData.percentage,
-    batteryData.state === 'CHARGING'
+    isBatteryChargingState(batteryData.state)
   );
 }
 
@@ -180,9 +185,11 @@ async function updatePingImmediately(context) {
   transport.sendUpdateIfChanged(context, generateButtonImage('⚡', 'PING', '... ms', targetLabel, 0));
   pingState.lastPingTime = Date.now();
   await getPing(context, target, true);
+
+  const pingPercent = clamp(pingState.lastPing, 0, 100);
   transport.sendUpdateIfChanged(
     context,
-    generateButtonImage('⚡', 'PING', `${pingState.lastPing} ms`, targetLabel, Math.min(100, pingState.lastPing))
+    generateButtonImage('⚡', 'PING', `${pingState.lastPing} ms`, targetLabel, pingPercent)
   );
 }
 
@@ -598,15 +605,15 @@ async function pollOnce() {
           image = generateButtonImage('🎮', 'GPU', `${usage}%`, `${gpuStats.power}W | ${gpuStats.temp}°C`, usage);
         }
       } else if (action === ACTIONS.ram) {
-        const activeMemory = memData.active ?? memData.used ?? 0;
+        const usedMemory = memData.used ?? memData.active ?? 0;
         const totalMemory = memData.total ?? 0;
 
         if (!totalMemory) {
           image = unavailableButton('🧠', 'RAM', 'NO DATA');
         } else {
-          const percent = (activeMemory / totalMemory) * 100;
-          const usedGB = (activeMemory / (1024 ** 3)).toFixed(1);
-          const totalGB = (totalMemory / (1024 ** 3)).toFixed(0);
+          const percent = clamp((usedMemory / totalMemory) * 100, 0, 100);
+          const usedGB = (usedMemory / (1024 ** 3)).toFixed(1);
+          const totalGB = (totalMemory / (1024 ** 3)).toFixed(1);
           image = generateButtonImage('🧠', 'RAM', `${Math.round(percent)}%`, `${usedGB} / ${totalGB} GB`, percent);
         }
       } else if (action === ACTIONS.vram) {
@@ -615,9 +622,9 @@ async function pollOnce() {
         if (!gpuStats?.available || !gpuStats.vramTotal) {
           image = unavailableButton('🎞️', 'VRAM', 'NO VRAM');
         } else {
+          const percent = clamp((gpuStats.vramUsed / gpuStats.vramTotal) * 100, 0, 100);
           const usedGB = (gpuStats.vramUsed / (1024 ** 3)).toFixed(1);
-          const totalGB = (gpuStats.vramTotal / (1024 ** 3)).toFixed(0);
-          const percent = (gpuStats.vramUsed / gpuStats.vramTotal) * 100;
+          const totalGB = (gpuStats.vramTotal / (1024 ** 3)).toFixed(1);
           image = generateButtonImage('🎞️', 'VRAM', `${Math.round(percent)}%`, `${usedGB} / ${totalGB} GB`, percent);
         }
       } else if (action === ACTIONS.net) {
@@ -647,7 +654,8 @@ async function pollOnce() {
           await getPing(context, target, false);
         }
 
-        image = generateButtonImage('⚡', 'PING', `${pingState.lastPing} ms`, targetLabel, Math.min(100, pingState.lastPing));
+        const pingPercent = clamp(pingState.lastPing, 0, 100);
+        image = generateButtonImage('⚡', 'PING', `${pingState.lastPing} ms`, targetLabel, pingPercent);
       } else if (action === ACTIONS.top) {
         const topProcess = getTopProcessSummary(procData, settings.topMode);
 
