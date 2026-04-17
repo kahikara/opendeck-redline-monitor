@@ -493,7 +493,6 @@ async function pollOnce() {
     const needsDisk = actionsList.includes(ACTIONS.disk);
     const needsTop = actionsList.includes(ACTIONS.top);
     const needsAudio = actionsList.includes(ACTIONS.audio);
-    const needsGpu = actionsList.includes(ACTIONS.gpu) || actionsList.includes(ACTIONS.vram);
     const needsBrightness = actionsList.includes(ACTIONS.monbright);
 
     const promises = [];
@@ -779,8 +778,6 @@ async function handleMessage(data) {
         await updatePingImmediately(context);
       } else if (resolvedAction === ACTIONS.timer) {
         updateTimerUI(context);
-      } else if (resolvedAction === ACTIONS.page) {
-        updatePageDialImmediately(context);
       }
 
       maybeRestartPolling(refreshChanged);
@@ -817,8 +814,6 @@ async function handleMessage(data) {
           await updatePingImmediately(context);
         } else if (resolvedAction === ACTIONS.timer) {
           updateTimerUI(context);
-        } else if (resolvedAction === ACTIONS.page) {
-          updatePageDialImmediately(context);
         }
 
         maybeRestartPolling(refreshChanged);
