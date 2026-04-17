@@ -131,7 +131,7 @@ function trimBatteryLabel(label) {
 
 function isBatteryChargingState(state) {
   const value = String(state || '').trim().toUpperCase();
-  return value === 'CHARGING' || value === 'PENDING';
+  return value === 'CHARGING' || value === 'PENDING' || value === 'FULL';
 }
 
 function renderBatteryImage(batteryData) {

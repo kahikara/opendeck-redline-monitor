@@ -101,6 +101,7 @@ function normalizeState(state) {
   if (value === 'discharging') return 'DISCHARGING';
   if (value === 'fully-charged') return 'FULL';
   if (value === 'pending-charge') return 'PENDING';
+  if (value === 'not charging') return 'PENDING';
   if (value === 'empty') return 'EMPTY';
 
   return value ? value.toUpperCase() : 'UPOWER';
@@ -174,6 +175,19 @@ function scoreDevice(deviceId, label = '', manufacturer = '') {
   return score;
 }
 
+function getAutoDevicePriority(entry = {}) {
+  const state = normalizeState(entry.state || '');
+  let priority = scoreDevice(entry.id || entry.deviceId || '', entry.label || '', entry.manufacturer || '');
+
+  if (state === 'CHARGING' || state === 'PENDING') priority += 1000;
+  else if (state === 'FULL') priority += 500;
+
+  if (entry.fromCache === false) priority += 50;
+  if (entry.source === 'sysfs') priority += 25;
+
+  return priority;
+}
+
 function cloneBatterySample(sample, fromCache = false) {
   if (!sample) {
     return null;
@@ -202,7 +216,7 @@ function getCachedBatterySample(deviceId, maxAgeMs = SAMPLE_CACHE_MS) {
 function getBestCachedBatterySample() {
   const samples = Array.from(lastBatterySamples.values())
     .filter((sample) => sample && (Date.now() - sample.updatedAt) <= SAMPLE_CACHE_MS)
-    .sort((a, b) => scoreDevice(b.deviceId, b.label, b.manufacturer) - scoreDevice(a.deviceId, a.label, a.manufacturer));
+    .sort((a, b) => getAutoDevicePriority(b) - getAutoDevicePriority(a));
 
   return samples.length > 0 ? cloneBatterySample(samples[0], true) : null;
 }
@@ -319,7 +333,7 @@ function listSysfsBatteryDevices() {
           fromCache: Boolean(info?.fromCache),
         };
       })
-      .sort((a, b) => scoreDevice(b.id, b.label, b.manufacturer) - scoreDevice(a.id, a.label, a.manufacturer));
+      .sort((a, b) => getAutoDevicePriority(b) - getAutoDevicePriority(a));
   } catch (error) {
     return [];
   }
@@ -370,7 +384,7 @@ async function listUpowerBatteryDevices() {
     };
   }));
 
-  return devices.sort((a, b) => scoreDevice(b.id, b.label, b.manufacturer) - scoreDevice(a.id, a.label, a.manufacturer));
+  return devices.sort((a, b) => getAutoDevicePriority(b) - getAutoDevicePriority(a));
 }
 
 function mergeCachedDevices(devices) {
@@ -395,7 +409,7 @@ function mergeCachedDevices(devices) {
     knownIds.add(sample.deviceId);
   }
 
-  return merged.sort((a, b) => scoreDevice(b.id, b.label, b.manufacturer) - scoreDevice(a.id, a.label, a.manufacturer));
+  return merged.sort((a, b) => getAutoDevicePriority(b) - getAutoDevicePriority(a));
 }
 
 async function listBatteryDevices(force = false) {
@@ -424,7 +438,8 @@ async function resolveBatteryDevice(selectedDevice = 'auto', force = false) {
   }
 
   const devices = await listBatteryDevices(force);
-  return devices[0]?.id || '';
+  const bestDevice = [...devices].sort((a, b) => getAutoDevicePriority(b) - getAutoDevicePriority(a))[0];
+  return bestDevice?.id || '';
 }
 
 async function getMouseBattery(selectedDevice = 'auto') {
