@@ -46,18 +46,32 @@ function readSysfsUeventValue(dirPath, key) {
 }
 
 function readSysfsBatteryState(dirPath) {
+  const online = readText(path.join(dirPath, 'online'));
+  const isOnline = online === '1';
+
   const directStatus = readText(path.join(dirPath, 'status'));
   if (directStatus) {
+    const normalizedDirect = directStatus.trim().toLowerCase();
+
+    if (isOnline && (normalizedDirect === 'not charging' || normalizedDirect === 'unknown')) {
+      return 'Charging';
+    }
+
     return directStatus;
   }
 
   const ueventStatus = readSysfsUeventValue(dirPath, 'POWER_SUPPLY_STATUS');
   if (ueventStatus) {
+    const normalizedUevent = ueventStatus.trim().toLowerCase();
+
+    if (isOnline && (normalizedUevent === 'not charging' || normalizedUevent === 'unknown')) {
+      return 'Charging';
+    }
+
     return ueventStatus;
   }
 
-  const online = readText(path.join(dirPath, 'online'));
-  if (online === '1') {
+  if (isOnline) {
     return 'Charging';
   }
 
