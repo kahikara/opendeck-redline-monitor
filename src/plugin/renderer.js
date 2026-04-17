@@ -2,10 +2,11 @@ const { clamp, getAdaptiveFontSize, escapeXml } = require('./utils');
 
 function generateButtonImage(icon, title, line1, line2, percent = -1) {
   const safeTitle = String(title || '');
+  const safeHeader = `${String(icon || '').trim()} ${safeTitle}`.trim();
   const safeLine1 = String(line1 || '');
   const safeLine2 = String(line2 || '');
 
-  const titleSize = getAdaptiveFontSize(safeTitle, 19, 15, 8, 1);
+  const titleSize = getAdaptiveFontSize(safeHeader, 18, 13, 10, 1);
   const line1Size = getAdaptiveFontSize(safeLine1, 35, 21, 5, 2);
   const line2Size = getAdaptiveFontSize(safeLine2, 20, 13, 16, 1);
 
@@ -22,8 +23,7 @@ function generateButtonImage(icon, title, line1, line2, percent = -1) {
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
     <rect width="144" height="144" fill="#18181b"/>
-    <text x="60" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="21" text-anchor="end">${escapeXml(icon)}</text>
-    <text x="64" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
+    <text x="72" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="middle">${escapeXml(safeHeader)}</text>
     <text x="72" y="76" fill="#ffffff" font-family="sans-serif" font-size="${line1Size}" font-weight="bold" text-anchor="middle">${escapeXml(safeLine1)}</text>
     <text x="72" y="104" fill="#a1a1aa" font-family="sans-serif" font-size="${line2Size}" text-anchor="middle">${escapeXml(safeLine2)}</text>
     ${barHtml}
@@ -64,19 +64,19 @@ function generateCenteredHeaderButtonImage(icon, title, line1, line2, percent = 
 
 function generateFooterButtonImage(icon, title, line1, line2, footer = '') {
   const safeTitle = String(title || '');
+  const safeHeader = `${String(icon || '').trim()} ${safeTitle}`.trim();
   const safeLine1 = String(line1 || '');
   const safeLine2 = String(line2 || '');
   const safeFooter = String(footer || '');
 
-  const titleSize = getAdaptiveFontSize(safeTitle, 19, 15, 8, 1);
+  const titleSize = getAdaptiveFontSize(safeHeader, 18, 13, 10, 1);
   const line1Size = getAdaptiveFontSize(safeLine1, 30, 20, 6, 2);
   const line2Size = getAdaptiveFontSize(safeLine2, 24, 16, 8, 1);
   const footerSize = getAdaptiveFontSize(safeFooter, 18, 13, 12, 1);
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
     <rect width="144" height="144" fill="#18181b"/>
-    <text x="60" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="21" text-anchor="end">${escapeXml(icon)}</text>
-    <text x="64" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="start">${escapeXml(safeTitle)}</text>
+    <text x="72" y="31" fill="#a1a1aa" font-family="sans-serif" font-size="${titleSize}" font-weight="bold" text-anchor="middle">${escapeXml(safeHeader)}</text>
     <text x="72" y="70" fill="#ffffff" font-family="sans-serif" font-size="${line1Size}" font-weight="bold" text-anchor="middle">${escapeXml(safeLine1)}</text>
     <text x="72" y="96" fill="#a1a1aa" font-family="sans-serif" font-size="${line2Size}" text-anchor="middle">${escapeXml(safeLine2)}</text>
     <text x="72" y="126" fill="#71717a" font-family="sans-serif" font-size="${footerSize}" text-anchor="middle">${escapeXml(safeFooter)}</text>
