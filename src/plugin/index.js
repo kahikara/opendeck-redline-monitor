@@ -593,7 +593,8 @@ async function pollOnce() {
           const load = Math.round(cpuData.currentLoad || 0);
           const temp = Math.round(cpuTemp.main || 0);
           const wattsText = cpuPower.available ? `${cpuPower.watts}W` : 'NO PWR';
-          image = generateButtonImage('💻', 'CPU', `${load}%`, `${wattsText} | ${temp}°C`, load);
+          const tempPercent = clamp(temp, 0, 100);
+          image = generateButtonImage('💻', 'CPU', `${load}%`, `${wattsText} | ${temp}°C`, tempPercent);
         }
       } else if (action === ACTIONS.gpu) {
         const gpuStats = getCachedGpuStats(gpuStatsCache, settings.gpuSelector);
@@ -602,7 +603,8 @@ async function pollOnce() {
           image = unavailableButton('🎮', 'GPU', 'NO GPU');
         } else {
           const usage = gpuStats.usage;
-          image = generateButtonImage('🎮', 'GPU', `${usage}%`, `${gpuStats.power}W | ${gpuStats.temp}°C`, usage);
+          const tempPercent = clamp(gpuStats.temp, 0, 100);
+          image = generateButtonImage('🎮', 'GPU', `${usage}%`, `${gpuStats.power}W | ${gpuStats.temp}°C`, tempPercent);
         }
       } else if (action === ACTIONS.ram) {
         const usedMemory = memData.used ?? memData.active ?? 0;

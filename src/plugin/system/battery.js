@@ -33,6 +33,37 @@ function parseInteger(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function readSysfsUeventValue(dirPath, key) {
+  const lines = readText(path.join(dirPath, 'uevent')).split(/\r?\n/);
+
+  for (const line of lines) {
+    if (line.startsWith(`${key}=`)) {
+      return line.slice(key.length + 1).trim();
+    }
+  }
+
+  return '';
+}
+
+function readSysfsBatteryState(dirPath) {
+  const directStatus = readText(path.join(dirPath, 'status'));
+  if (directStatus) {
+    return directStatus;
+  }
+
+  const ueventStatus = readSysfsUeventValue(dirPath, 'POWER_SUPPLY_STATUS');
+  if (ueventStatus) {
+    return ueventStatus;
+  }
+
+  const online = readText(path.join(dirPath, 'online'));
+  if (online === '1') {
+    return 'Charging';
+  }
+
+  return '';
+}
+
 function parseBatteryInfo(text = '') {
   const percentageMatch = text.match(/percentage:\s*([0-9]+)%/i);
   const stateMatch = text.match(/state:\s*([^\n\r]+)/i);
@@ -238,7 +269,7 @@ function readSysfsBatteryDevice(deviceId) {
   }
 
   const percentage = parseInteger(readText(path.join(dir, 'capacity')));
-  const state = readText(path.join(dir, 'status'));
+  const state = readSysfsBatteryState(dir);
   const model = readText(path.join(dir, 'model_name'));
   const manufacturer = readText(path.join(dir, 'manufacturer'));
 

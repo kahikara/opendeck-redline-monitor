@@ -105,7 +105,7 @@ function generateBatteryButtonImage(icon, title, line1, line2, percent = -1, isC
   }
 
   if (isCharging) {
-    chargingHtml = `<text x="123" y="109" fill="#facc15" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">⚡</text>`;
+    chargingHtml = `<text x="103" y="82" fill="#facc15" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">⚡</text>`;
   }
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">
