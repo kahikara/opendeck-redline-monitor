@@ -5,7 +5,7 @@ const state = require('./state');
 const { ACTIONS } = require('./constants');
 const { log, warn, clamp, runCommand, commandExists } = require('./utils');
 const { storeSettingsForContext, getSettingsForContext, getPluginWideSettings, getResolvedAction } = require('./settings');
-const { generateButtonImage, generateCenteredHeaderButtonImage, generateDialImage, generateFooterButtonImage, unavailableButton, unavailableDial } = require('./renderer');
+const { generateButtonImage, generateBatteryButtonImage, generateCenteredHeaderButtonImage, generateDialImage, generateFooterButtonImage, unavailableButton, unavailableDial } = require('./renderer');
 const transport = require('./transport');
 
 const { getCpuPower } = require('./system/cpu');
@@ -134,67 +134,13 @@ function renderBatteryImage(batteryData) {
     return generateButtonImage('🔋', 'BATTERY', 'N/A', 'NO DATA', -1);
   }
 
-  return generateButtonImage(
+  return generateBatteryButtonImage(
     '🔋',
     'BATTERY',
     `${batteryData.percentage}%`,
     trimBatteryLabel(batteryData.label),
-    batteryData.percentage
-  );
-}
-
-function renderTimeImage(context) {
-  const now = new Date();
-
-  if (state.activeContexts[context]?.isEncoder) {
-    return generateDialImage(
-      '🕒',
-      'CLOCK',
-      now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
-      -1
-    );
-  }
-
-  return generateButtonImage(
-    '🕒',
-    'CLOCK',
-    now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
-    now.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }),
-    -1
-  );
-}
-
-function trimBatteryLabel(label) {
-  let value = String(label || '').trim();
-
-  if (!value) return 'UNKNOWN';
-
-  value = value
-    .replace(/^Logitech\s+/i, '')
-    .replace(/\s+LIGHTSPEED$/i, '')
-    .replace(/\s+Wireless$/i, '')
-    .replace(/\s+Mouse$/i, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (!value) {
-    value = String(label || '').trim();
-  }
-
-  return value.length > 12 ? `${value.slice(0, 11)}…` : value;
-}
-
-function renderBatteryImage(batteryData) {
-  if (!batteryData?.available) {
-    return generateButtonImage('🔋', 'BATTERY', 'N/A', 'NO DATA', -1);
-  }
-
-  return generateButtonImage(
-    '🔋',
-    'BATTERY',
-    `${batteryData.percentage}%`,
-    trimBatteryLabel(batteryData.label),
-    batteryData.percentage
+    batteryData.percentage,
+    batteryData.state === 'CHARGING'
   );
 }
 
