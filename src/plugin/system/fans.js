@@ -105,6 +105,41 @@ function sortFans(list = []) {
   });
 }
 
+function isRunningFan(entry = {}) {
+  return Number.isFinite(entry.rpm) && entry.rpm > 0;
+}
+
+function isLikelyPrimarySystemFan(entry = {}) {
+  const name = String(entry.displayName || '').toLowerCase();
+  return !entry.isGpu && (/cpu|pump|rear|front|case|chassis|system/.test(name) || !!entry.label);
+}
+
+function getAutoFanCandidates(fans = []) {
+  const sorted = sortFans(fans);
+
+  const primaryRunningSystem = sorted.filter((entry) => isLikelyPrimarySystemFan(entry) && isRunningFan(entry));
+  if (primaryRunningSystem.length > 0) {
+    return primaryRunningSystem;
+  }
+
+  const anyRunningSystem = sorted.filter((entry) => !entry.isGpu && isRunningFan(entry));
+  if (anyRunningSystem.length > 0) {
+    return anyRunningSystem;
+  }
+
+  const runningGpu = sorted.filter((entry) => entry.isGpu && isRunningFan(entry));
+  if (runningGpu.length > 0) {
+    return runningGpu;
+  }
+
+  const anySystem = sorted.filter((entry) => !entry.isGpu);
+  if (anySystem.length > 0) {
+    return anySystem;
+  }
+
+  return sorted;
+}
+
 function scanHwmonFans() {
   const root = '/sys/class/hwmon';
 
@@ -221,7 +256,7 @@ function getFanStats(selector = 'auto') {
 
   const normalizedSelector = String(selector || '').trim();
   const selectedFan = !normalizedSelector || normalizedSelector === 'auto'
-    ? fans[0]
+    ? getAutoFanCandidates(fans)[0]
     : fans.find((entry) => entry.id === normalizedSelector);
 
   return selectedFan || unavailableFanStats();
