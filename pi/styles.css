@@ -81,6 +81,10 @@ h1 {
   background: var(--panel-alt);
 }
 
+.utilityActionsCard {
+  align-content: start;
+}
+
 .stack {
   display: grid;
   gap: 6px;
