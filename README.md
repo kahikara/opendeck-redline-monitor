@@ -68,7 +68,12 @@ Available settings include:
 
 ## Requirements
 
-Depending on the action, you may need:
+The plugin runtime requires:
+
+* `nodejs`
+* `npm`
+
+Depending on the action, you may also need:
 
 * `wireplumber`
 * `ddcutil`
